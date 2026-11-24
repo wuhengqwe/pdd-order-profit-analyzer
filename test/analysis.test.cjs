@@ -187,20 +187,16 @@ test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本",
   assert.equal(template["同组商品ID"], "900000000001,900000000002");
   assert.equal(topLink["同组其他商品ID"], "900000000002");
   assert.equal(topLink["同组保留单"], 67);
-  assert.equal(topLink["同组其他链接出单明细"], "900000000002（27单）");
-  assert.equal(template["同组链接出单明细"], "900000000001（40单）,900000000002（27单）");
   const links = XLSX.utils.sheet_to_json(book.Sheets["链接盈亏"]);
   assert.equal(links.find(x=>x["商品ID"]==="900000000001")["同组其他商品ID"], "900000000002");
   assert.equal(links.find(x=>x["商品ID"]==="900000000002")["同组其他商品ID"], "900000000001");
   assert.equal(links.find(x=>x["商品ID"]==="900000000004")["同组其他商品ID"], undefined);
-  assert.equal(links.find(x=>x["商品ID"]==="900000000001")["同组其他链接出单明细"], "900000000002（27单）");
-  assert.equal(links.find(x=>x["商品ID"]==="900000000002")["同组其他链接出单明细"], "900000000001（40单）");
   assert.equal(links.find(x=>x["商品ID"]==="900000000002")["同组保留单"], 67);
   assert.equal(Object.hasOwn(template, "出单率（单/链接）"), false);
   assert.ok(!book.SheetNames.some(name=>name.includes("出单率")));
 });
 
-test("链接盈亏按近30天保留单统计同组其他链接条数，四档可数字筛选", () => {
+test("三个分表按近30天保留单分档，模板清单含全组，单链接视图排除当前商品", () => {
   const ordersByLink = [0, 1, 9, 10, 49, 50, 51];
   const orders = ordersByLink.flatMap((count, i) =>
     Array.from({ length: Math.max(1, count) }, (_, index) =>
@@ -221,5 +217,16 @@ test("链接盈亏按近30天保留单统计同组其他链接条数，四档可
   assert.deepEqual(bandsFor("910000000006"), [1, 2, 2, 1]);
   assert.deepEqual(bandsFor("910000000020"), [0, 0, 0, 0]);
   assert.deepEqual(bandsFor("910000000021"), [undefined, undefined, undefined, undefined]);
-  assert.equal(sheet["!autofilter"].ref, sheet["!ref"]);
+  const summary = XLSX.utils.sheet_to_json(book.Sheets["模板清单"]).find(row => row["同组链接"] === 7);
+  const leader = XLSX.utils.sheet_to_json(book.Sheets["模板最高单量链接"]).find(row => row["模板号"] === summary["模板号"]);
+  assert.deepEqual(headers.map(header => summary[header.replace("其他", "同组")]), [2, 2, 2, 1]);
+  assert.deepEqual(headers.map(header => leader[header]), [1, 2, 2, 1]);
+  assert.equal(summary["同组商品ID"].split(",").length, 7);
+  assert.equal(leader["同组其他商品ID"].split(",").length, 6);
+  for (const name of ["链接盈亏", "模板清单", "模板最高单量链接"]) {
+    const table = book.Sheets[name];
+    const [columns] = XLSX.utils.sheet_to_json(table, { header: 1 });
+    assert.ok(!columns.some(column => column.endsWith("链接出单明细")));
+    assert.equal(table["!autofilter"].ref, table["!ref"]);
+  }
 });
