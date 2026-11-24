@@ -161,6 +161,40 @@ test("总花费缺列和单行缺值时回退成交花费，已有零值仍取�
   assert.equal(result.stats.promoGap,0);
 });
 
+test("推广 XLS 支持商品名称列的总计行和尾注，仍校验真实商品行的 ID", async () => {
+  const orderFile = new File([
+    "订单号,商品ID,订单状态,订单成交时间,商家实收,商品数量,规格编码\r\n",
+    "f1,900000000001,已收货,2026-11-02,50,1,0010",
+  ], "order.csv");
+  const importPromo = (data) => {
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([
+      ["商品名称", "商品ID", "成交花费(元)", "总花费(元)"],
+      ...data,
+    ]), "Sheet0");
+    const promoFile = new File([XLSX.write(book, { bookType: "xls", type: "array" })],
+      "商品推广_账户_汇总数据_商品_20261101至20261123.xls");
+    return scope.PddReportFiles.importFiles({ order: [orderFile], promo: [promoFile], cost: [] },
+      { start: "", end: "", options: {} });
+  };
+  const contents = [
+    ["示例商品", "900000000001", "6.00", "6.00"],
+    ["总计", "-", "8.00", "9.00"],
+    ["注：全店托管花费计入合计", ""],
+  ];
+  const result = await importPromo(contents);
+  assert.equal(result.info.promoRows, 1);
+  assert.equal(result.info.promoTotal, 9);
+  assert.equal(result.stats.spend, 6);
+  assert.equal(result.stats.promoGap, 3);
+  assert.equal(result.start, "2026-11-01");
+  assert.equal(result.end, "2026-11-23");
+  await assert.rejects(importPromo([
+    ["合计", "900000000001", "6.00", "6.00"],
+    ["注射用商品示例", "-", "1.00", "1.00"],
+  ]), /第 3 行商品 ID 无法识别/);
+});
+
 test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本", async () => {
   await onMessage({ data: { kind: "demo" } });
   const completed = messages.find(x => x.kind === "result");

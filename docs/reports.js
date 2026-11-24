@@ -199,19 +199,22 @@
     let total = null;
     for (const { n, get } of lines) {
       const id = get("id", true);
-      if (/^(总计|合计|汇总)$/.test(id)) {
+      const title = clean(get("title"));
+      const rowLabel = blank(id) ? title : id;
+      if (/^(总计|合计|汇总)$/.test(rowLabel)) {
         const one = amount(blank(get("spend")) ? get("transactionSpend") : get("spend"), describe(name, n) + "推广花费");
         if (total !== null && one !== total) throw new Error("推广报表含多个不同的总计金额，请导入单一商品汇总报表。");
         total = one;
         continue;
       }
-      if (/^(注[:：]?|备注[:：]?|仅下载)/.test(id) || (!id && blank(get("spend")) && blank(get("transactionSpend")))) continue;
+      const isNote = /^(注[:：]?|备注[:：]?|仅下载)/.test(id) || (blank(id) && /^(注|备注)[:：]/.test(title));
+      if (isNote || (!id && blank(get("spend")) && blank(get("transactionSpend")))) continue;
       if (!/^\d{6,}$/.test(id)) throw new Error(describe(name, n) + "商品 ID 无法识别，需导出到商品维度。");
       const date = dateCell(get("date"));
       if (dated && !date) throw new Error(describe(name, n) + "缺有效推广日期。");
       const label = describe(name, n);
       const fallback = blank(get("spend")) && !blank(get("transactionSpend"));
-      rows.push({ id, date, title: clean(get("title")),
+      rows.push({ id, date, title,
         usedTransactionSpend: fallback, spend: amount(fallback ? get("transactionSpend") : get("spend"), label + "推广花费"),
         orders: amount(get("orders"), label + "推广净成交笔数", 0), revenue: amount(get("revenue"), label + "推广净交易额", 0) });
     }

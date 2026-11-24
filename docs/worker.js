@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.7.4", "./reports.js?v=1.7.4");
+importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.7.6", "./reports.js?v=1.7.6");
 
 let result = null;
 const snapshotUrl = "https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json";
