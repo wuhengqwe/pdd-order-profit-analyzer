@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="在浏览器中合并拼多多订单与商品推广报表，核算链接盈亏并筛选同码同价模板。">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'; connect-src https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json; base-uri 'none'; form-action 'none'">
+  <title>拼多多出单分析</title>
+  <link rel="stylesheet" href="./style.css?v=1.0.0">
+  <script src="./app.js?v=1.0.0" defer></script>
+</head>
+<body>
+  <a href="#workspace" class="skip">跳到报表导入</a>
+  <header class="top">
+    <div class="shell top-inner">
+      <a class="brand" href="#">
+        <span aria-hidden="true" class="mark"><i></i><i></i><i></i></span>
+        <span>出单分析<span class="brand-extra"> / 拼多多</span></span>
+      </a>
+      <nav aria-label="页面导航" class="nav">
+        <a href="#how">使用说明</a>
+        <button type="button" id="demo" class="button button-soft">试用示例</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="workspace" class="shell">
+    <section class="intro" aria-labelledby="page-title">
+      <div>
+        <h1 id="page-title">拼多多出单与利润分析</h1>
+        <p>把订单和推广报表对到商品链接，找出近期有单、利润为正的复发模板。</p>
+      </div>
+      <span class="local-note"><span aria-hidden="true"></span>订单与推广报表在本机处理</span>
+    </section>
+
+    <noscript><p class="notice problem">此工具在浏览器本地计算，请启用 JavaScript 后刷新。</p></noscript>
+    <form id="setup" class="setup" aria-labelledby="inputs-title" method="post" action="#">
+      <section class="card reports" aria-labelledby="inputs-title">
+        <div class="card-heading">
+          <h2 id="inputs-title">导入报表</h2>
+          <p>导出同一家店铺、同一日期范围的两份报表。</p>
+        </div>
+        <div class="file-block">
+          <div class="file-info">
+            <label for="orders-file">订单对账报表 <span class="required">必选</span></label>
+            <p id="orders-help">拼多多商家后台 · 订单查询 · 对账报表</p>
+            <p class="selected" id="orders-name">支持多个 CSV、Excel 或 ZIP</p>
+          </div>
+          <input type="file" id="orders-file" name="orders" class="sr-only file-input" aria-describedby="orders-help orders-name" accept=".zip,.csv,.xlsx,.xls,.tsv" multiple required>
+          <label for="orders-file" class="button file-button" aria-hidden="true">选择文件</label>
+        </div>
+        <div class="file-block">
+          <div class="file-info">
+            <label for="promo-file">商品推广报表 <span class="required">必选</span></label>
+            <p id="promo-help">多多招财 · 报表下载 · 推广商品汇总</p>
+            <p class="selected" id="promo-name">支持 XLS、XLSX、CSV</p>
+          </div>
+          <input type="file" id="promo-file" name="promo" class="sr-only file-input" aria-describedby="promo-help promo-name" accept=".xls,.xlsx,.csv,.tsv" required>
+          <label for="promo-file" class="button file-button" aria-hidden="true">选择文件</label>
+        </div>
+
+        <fieldset class="cost-options">
+          <legend>成本来源</legend>
+          <div class="choices">
+            <label><input type="radio" name="costSource" value="public" checked> 使用现有仓库快照</label>
+            <label><input type="radio" name="costSource" value="custom"> 导入自有成本</label>
+            <label><input type="radio" name="costSource" value="none"> 暂不导入成本</label>
+          </div>
+          <p id="cost-help" class="hint">按规格编码先查莆田，未匹配再查义乌。快照从原亏损分析网站读取。</p>
+          <div class="file-block custom-cost" id="custom-cost" hidden>
+            <div class="file-info">
+              <label for="cost-file">商品成本表</label>
+              <p id="cost-name" class="selected">可选择多份表格，按「仓库」列区分莆田和义乌</p>
+            </div>
+            <input type="file" id="cost-file" name="cost" class="sr-only file-input" aria-describedby="cost-name" accept=".xls,.xlsx,.csv,.tsv,.json" multiple disabled>
+            <label for="cost-file" class="button file-button" aria-hidden="true">选择文件</label>
+          </div>
+        </fieldset>
+      </section>
+
+      <section class="card setup-settings" aria-labelledby="settings-title">
+        <div class="card-heading">
+          <h2 id="settings-title">分析口径</h2>
+          <p>可按自己的店铺调整费用。</p>
+        </div>
+        <fieldset class="dates">
+          <legend>统计区间</legend>
+          <div class="fields">
+            <div><label for="start">开始日期</label><input id="start" name="start" type="date" aria-describedby="date-help"></div>
+            <div><label for="end">结束日期</label><input id="end" name="end" type="date" aria-describedby="date-help"></div>
+          </div>
+          <p id="date-help" class="hint">留空时优先读取推广报表上的日期范围。</p>
+        </fieldset>
+        <div class="fields base-fees">
+          <div><label for="tax">税点（%）</label><input type="number" min="0" max="100" step="0.01" id="tax" name="tax" value="5" required></div>
+          <div><label for="shipping">运费（元/单）</label><input type="number" min="0" max="1000" step="0.01" id="shipping" name="shipping" value="2.50" required></div>
+          <div><label for="stressShipping">对照运费（元/单）</label><input type="number" min="0" max="1000" step="0.01" id="stressShipping" name="stressShipping" value="3.00" required></div>
+        </div>
+        <details class="fees">
+          <summary>其他费用</summary>
+          <div class="fields">
+            <div><label for="packaging">包装损耗（%）</label><input type="number" min="0" max="100" step="0.01" id="packaging" name="packaging" value="5" required></div>
+            <div><label for="service">技术服务费（%）</label><input type="number" min="0" max="100" step="0.01" id="service" name="service" value="0.60" required></div>
+            <div><label for="reserve">退款损耗（%）</label><input type="number" min="0" max="100" step="0.01" id="reserve" name="reserve" value="5" required></div>
+          </div>
+        </details>
+        <div class="submit-block">
+          <button type="submit" id="run" class="button primary">开始分析</button>
+          <p id="status" class="hint" role="status">分析完成后可下载 Excel 明细。</p>
+        </div>
+      </section>
+    </form>
+    <p id="error" class="notice problem" role="alert" tabindex="-1" hidden></p>
+
+    <section class="results" id="results" aria-labelledby="result-title" hidden>
+      <div class="result-header">
+        <div>
+          <h2 id="result-title" tabindex="-1">分析结果</h2>
+          <p id="result-scope" class="hint"></p>
+        </div>
+        <button type="button" id="download" class="button primary">导出 Excel</button>
+      </div>
+      <div id="metrics" class="metrics"></div>
+      <ul id="warnings" class="notice warnings" hidden></ul>
+      <div class="result-card">
+        <div class="result-bar">
+          <nav id="views" class="views" aria-label="结果视图">
+            <button type="button" data-view="templates" aria-pressed="true">模板清单</button>
+            <button type="button" data-view="links" aria-pressed="false">链接盈亏</button>
+            <button type="button" data-view="specs" aria-pressed="false">规格与价格</button>
+            <button type="button" data-view="overlaps" aria-pressed="false">重叠规格</button>
+          </nav>
+          <search class="filters">
+            <label for="query" class="sr-only">搜索商品、模板号或规格编码</label>
+            <input type="search" id="query" name="query" placeholder="商品、ID、模板号、规格…" autocomplete="off" autocapitalize="none" spellcheck="false">
+            <label for="filter" class="sr-only">按发布建议筛选</label>
+            <select id="filter" name="filter"><option value="">全部建议</option></select>
+          </search>
+        </div>
+        <div class="table-wrap" tabindex="0" role="region" aria-labelledby="table-title">
+          <table>
+            <caption id="table-title" class="sr-only">模板清单</caption>
+            <thead id="head"></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <div class="paging">
+          <span id="result-count" role="status"></span>
+          <div>
+            <button type="button" class="button button-soft" id="previous">上一页</button>
+            <button type="button" class="button button-soft" id="next">下一页</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <details id="how" class="card how">
+      <summary>使用说明与计算规则</summary>
+      <div>
+        <h3>报表与成本</h3>
+        <p>订单需要商品 ID、订单号、成交时间、订单状态、数量、商家实收和规格编码。推广表需要商品 ID 和总花费。使用自有成本表时，请将编码按文本保留前导零。<a href="./cost-template.csv" download>下载成本表模板</a></p>
+        <h3>订单与利润</h3>
+        <p>订单按订单号去重，排除未支付、取消和退款成功记录。订单数与商品件数分别统计。利润扣减商品成本、包装损耗、推广费、税费、技术服务费、运费和退款损耗预留。缺成本或缺推广花费的链接，利润留空。</p>
+        <h3>同模板识别</h3>
+        <p>先按商品 ID 归集，再用各规格的编码和最常见的商家实收单价归并。同组复用前请核对完整在售 SKU。按对照运费仍盈利、且有多条链接近期出单的组优先选择。</p>
+      </div>
+    </details>
+  </main>
+  <footer class="shell footer"><span>拼多多出单分析</span><a href="https://github.com/wuhengqwe/pdd-order-profit-analyzer">GitHub 源代码</a></footer>
+</body>
+</html>
