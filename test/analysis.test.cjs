@@ -144,6 +144,23 @@ test("出单率包含零单上架链接，排除下架链接，模板内去重�
   assert.equal(run({ orders: inputs }).templates[0].orderRate, null);
 });
 
+test("每个模板取保留单最多的商品 ID，独立于盈利和近期代表链接", () => {
+  const high = "900000000001", profitable = "900000000002";
+  const orders = [
+    ...Array.from({ length: 8 }, (_, i) => order({ order: "old-" + i, id: high, date: "2026-08-19" })),
+    ...Array.from({ length: 4 }, (_, i) => order({ order: "new-" + i, id: profitable })),
+  ];
+  const result = run({ orders, promos: [promo(high, 500)], costs: [{ code: "00101", price: 4, warehouse: "莆田" }] });
+  assert.equal(result.templates[0].rep, profitable);
+  assert.equal(result.templates[0].orders, 12);
+  assert.equal(result.leaders.length, 1);
+  assert.equal(result.leaders[0].id, high);
+  assert.equal(result.leaders[0].orders, 8);
+  assert.equal(result.leaders[0].recent, 0);
+  assert.equal(result.leaders[0].spend, 500);
+  assert.ok(result.leaders[0].base < 0);
+});
+
 test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本", async () => {
   await onMessage({ data: { kind: "demo" } });
   const completed = messages.find(x => x.kind === "result");
@@ -160,7 +177,10 @@ test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本",
   const book = XLSX.read(download.binary, { type: "array" });
   assert.equal(book.Sheets["规格成交证据"].D2.t, "s");
   assert.ok(book.Sheets["规格成交证据"].D2.v.startsWith("00"));
-  assert.equal(book.SheetNames.length, 7);
+  assert.equal(book.SheetNames.length, 8);
+  const topLink = XLSX.utils.sheet_to_json(book.Sheets["模板最高单量链接"])[0];
+  assert.equal(topLink["最高单量商品ID"], "900000000001");
+  assert.equal(topLink["保留单"], 40);
   const template = XLSX.utils.sheet_to_json(book.Sheets["模板清单"])[0];
   assert.equal(template["同模板上架链接数"], 3);
   assert.equal(template["出单率（单/链接）"], 67 / 3);

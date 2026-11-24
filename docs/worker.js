@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.2.0", "./reports.js?v=1.2.0");
+importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.3.0", "./reports.js?v=1.3.0");
 
 let result = null;
 const snapshotUrl = "https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json";
@@ -86,6 +86,7 @@ function workbookFor(r) {
     ["优先复发模板组", s.priority], ["同码同价多链接组", s.multi], ["无保留单推广花费（元）", s.noOrdersAdSpend],
     ["清单中上架链接", s.listed], ["可计算出单率的模板", s.rateTemplates],
     ["出单率（单/链接）", "模板保留订单号去重后，除以该模板上架链接数，包含零单上架链接。"],
+    ["模板最高单量链接", "每组按保留订单数选最高的一条商品链接；订单相同时优先近30天订单数较多的链接。"],
     ["同模板上架清单", r.info.listingName || "未导入"],
     ["莆田税点", o.putianTax + "%", "对莆田保留单实收计提"],
     ["义乌税点", o.yiwuTax + "%", "对义乌保留单实收计提"],
@@ -107,6 +108,13 @@ function workbookFor(r) {
     "基础利润", "对照利润", "基础利润率", "商家实收", "推广花费", "规格与常见实收单价", "组内最低主价占比", "清单模板标识", "同模板上架链接数", "出单率（单/链接）"],
   r.templates.map(x => [x.id, x.action, x.title, x.rep, x.linked, x.orders, x.recent, x.solid, x.base, x.stress,
     x.margin, x.revenue, x.spend, x.signatureText, x.share, x.listingTemplate, x.listedLinks, x.orderRate]), [8,9,11,12,17], [10,14], [12,18,48,20,12,12,14,18,15,15,14,16,16,74,20,22,18,20]);
+  add("模板最高单量链接", ["模板号", "最高单量商品ID", "商品标题", "保留单", "近30天单", "商品件数", "退款单",
+    "商家实收", "推广花费", "估算税费", "基础利润", "对照利润", "基础利润率", "主销规格编码", "主销实收单价",
+    "匹配成本仓", "上架状态", "利润状态"],
+  r.leaders.map(x => [x.template, x.id, x.title, x.orders, x.recent, x.units, x.refunded, x.revenue, x.spend,
+    x.tax, x.base, x.stress, x.margin, x.primaryCode, x.price, x.costWarehouse,
+    x.listed === true ? "在售" : x.listed === false ? "已下架" : "", x.status]),
+  [7,8,9,10,11,14], [12], [12,20,48,12,14,12,12,16,16,15,15,15,14,20,15]);
   add("链接盈亏", ["排名", "商品ID", "商品标题", "模板号", "保留单", "近30天单", "商品件数", "已付单", "退款单", "售后处理中",
     "商家实收", "推广花费", "匹配商品成本", "基础利润", "对照利润", "基础利润率", "主销规格编码", "主销实收单价",
     "缺成本单", "状态", "推广净成交笔数", "推广净交易额", "运费计费单数", "无规格编码行", "发布建议", "匹配成本仓", "莆田计税实收", "义乌计税实收", "估算税费", "计税仓待核对单", "上架状态"],

@@ -9,10 +9,13 @@
   const compare = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
   const pageSize = 25;
   const options = ["putianTax", "yiwuTax", "shipping", "stressShipping", "packaging", "service", "reserve"];
-  const labels = { templates: "模板清单", links: "链接盈亏", specs: "规格与价格", overlaps: "重叠规格" };
+  const labels = { templates: "模板清单", leaders: "模板最高单量链接", links: "链接盈亏", specs: "规格与价格", overlaps: "重叠规格" };
   const headers = {
     templates: [["id","模板号"],["title","代表商品"],["action","发布建议"],["linked","出单链接", "count"],["listedLinks","上架链接","count"],["orders","保留单","count"],["orderRate","出单率（单/链接）","rate"],
       ["recent","近 30 天","count"],["base","基础利润","money"],["stress","对照利润","money"],["spend","推广费","money"]],
+    leaders: [["template","模板号"],["title","最高单量链接"],["orders","保留单","count"],["recent","近 30 天","count"],
+      ["units","商品件数","count"],["refunded","退款单","count"],["revenue","商家实收","money"],["spend","推广费","money"],
+      ["tax","估算税费","money"],["base","基础利润","money"],["stress","对照利润","money"],["costWarehouse","匹配成本仓"]],
     links: [["rank","出单排名","count"],["title","商品链接"],["template","模板号"],["orders","保留单","count"],["units","商品件数","count"],
       ["recent","近 30 天","count"],["base","基础利润","money"],["stress","对照利润","money"],["spend","推广费","money"],
       ["costWarehouse","匹配成本仓"],["tax","估算税费","money"],["listed","上架状态"]],
@@ -88,7 +91,7 @@
   function start(message) {
     invalidate();
     try {
-      const worker = new Worker("./worker.js?v=1.2.0");
+      const worker = new Worker("./worker.js?v=1.3.0");
       state.worker = worker;
       worker.addEventListener("message", ({ data }) => {
         if (worker !== state.worker) return;

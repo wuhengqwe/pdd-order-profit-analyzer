@@ -346,6 +346,14 @@
     links.sort((a, b) => b.orders - a.orders || b.recent - a.recent || b.revenue - a.revenue || b.spend - a.spend || num.compare(a.id, b.id));
     links.forEach((r, i) => { r.rank = i + 1; });
     const templates = templatesFor(links, map, listing);
+    const leadersByTemplate = new Map();
+    for (const link of links) {
+      if (link.orders > 0 && link.template && !leadersByTemplate.has(link.template)) {
+        leadersByTemplate.set(link.template, link);
+      }
+    }
+    const leaders = templates.flatMap(template =>
+      leadersByTemplate.has(template.id) ? [leadersByTemplate.get(template.id)] : []);
     const specs = [];
     const similar = new Map();
     for (const a of links) {
@@ -383,7 +391,7 @@
       rateTemplates: templates.filter(x => x.orderRate !== null).length,
     };
     if (!links.length) throw new Error("所选日期内没有可分析的成交或商品推广明细。请检查分析区间和报表内容。");
-    return { start, end, info, opt, stats, templates, links, specs, overlaps, missingCosts: [...missingCodes]
+    return { start, end, info, opt, stats, templates, leaders, links, specs, overlaps, missingCosts: [...missingCodes]
       .map(([code, ids]) => ({ code: code || "（空编码）", orders: ids.size })).sort((a, b) => b.orders - a.orders || num.compare(a.code, b.code)),
       days: [...days].sort(([a], [b]) => num.compare(a, b)) };
   }
