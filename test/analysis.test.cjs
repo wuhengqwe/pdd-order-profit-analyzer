@@ -22,8 +22,8 @@ for (const name of ["analysis.js", "reports.js", "worker.js"]) {
   vm.runInContext(fs.readFileSync(path.join(site, name), "utf8"), context, { filename: name });
 }
 const { analyze, DEFAULTS } = scope.PddAnalysis;
-function order({ order, id = "900000000001", code = "00101", type = "已收货", service = "", quantity = 1, receipt = 20, date = "2026-10-11" }) {
-  return { order, id, code, date, state: type, service, quantity, receipt, buyer: receipt, title: "示例", variant: code, spec: "", warehouse: "" };
+function order({ order, id = "900000000001", code = "00101", type = "已收货", service = "", quantity = 1, receipt = 20, date = "2026-10-11", warehouse = "" }) {
+  return { order, id, code, date, state: type, service, quantity, receipt, buyer: receipt, title: "示例", variant: code, spec: "", warehouse };
 }
 function run({ orders, promos = [], costs = [], options = {}, info = {} }) {
   return analyze({ orders, promos, costs, start: "2026-08-03", end: "2026-10-31", options, info });
@@ -66,19 +66,43 @@ test("同仓冲突价格待核对，组合编码可使用跨仓部件", () => {
   assert.equal(result.links[1].base, null);
 });
 
-test("税费按实收 5%，推广费全额入账，缺花费不估算", () => {
+test("按莆田 1.5% 和义乌 5% 分开计税，推广费全额入账", () => {
   const find = (result, id) => result.links.find(x => x.id.endsWith(id));
-  const inputs = { orders: [order({ order: "sample", receipt: 100 }), order({ order: "missing", id: "900000000003" })],
-    promos: [promo("900000000001", 10), promo("900000000002", 7), promo("900000000003", null)],
-    costs: [{ code: "00101", price: 40, warehouse: "莆田" }] };
+  const inputs = { orders: [order({ order: "sample", receipt: 100 }), order({ order: "missing", id: "900000000003" }),
+    order({ order: "yiwu", id: "900000000004", code: "00102", receipt: 100 })],
+    promos: [promo("900000000001", 10), promo("900000000002", 7), promo("900000000003", null), promo("900000000004", 10)],
+    costs: [{ code: "00101", price: 40, warehouse: "莆田" }, { code: "00102", price: 40, warehouse: "义乌" }] };
   const result = run(inputs);
-  assert.equal(DEFAULTS.tax, 5);
-  assert.equal(find(result, "001").base, 34.9);
-  assert.equal(find(result, "001").stress, 34.4);
+  assert.equal(DEFAULTS.putianTax, 1.5);
+  assert.equal(DEFAULTS.yiwuTax, 5);
+  assert.equal(find(result, "001").base, 38.4);
+  assert.equal(find(result, "001").stress, 37.9);
+  assert.equal(find(result, "001").tax, 1.5);
+  assert.equal(find(result, "004").base, 34.9);
+  assert.equal(find(result, "004").tax, 5);
   assert.equal(find(result, "002").base, -7);
   assert.equal(find(result, "003").base, null);
-  assert.equal(result.stats.spend, 17);
-  assert.equal(run({ ...inputs, options: { tax: 1.5 } }).links.find(x => x.id === "900000000001").base, 38.4);
+  assert.equal(result.stats.spend, 27);
+  assert.equal(run({ ...inputs, options: { putianTax: 5 } }).links.find(x => x.id === "900000000001").base, 34.9);
+});
+
+test("明确发货仓优先计税，缺仓的组合按两仓成本分摊，未知仓留空", () => {
+  const result = run({
+    orders: [order({ order: "mix", code: "A+B", receipt: 100 }),
+      order({ order: "shipped", id: "900000000002", code: "A", receipt: 100, warehouse: "义乌发货仓" }),
+      order({ order: "unknown", id: "900000000003", code: "C", receipt: 100 })],
+    costs: [{ code: "A", price: 2, warehouse: "莆田" }, { code: "B", price: 3, warehouse: "义乌" },
+      { code: "C", price: 1, warehouse: "" }],
+  });
+  const [mix, shipped, unknown] = result.links;
+  assert.equal(mix.putianReceipt, 40);
+  assert.equal(mix.yiwuReceipt, 60);
+  assert.equal(mix.tax, 3.6);
+  assert.equal(shipped.costWarehouse, "莆田");
+  assert.equal(shipped.yiwuReceipt, 100);
+  assert.equal(shipped.tax, 5);
+  assert.equal(unknown.base, null);
+  assert.equal(unknown.taxMissing, 1);
 });
 
 test("同码同价归并，部分同规格交集保留为待核对", () => {

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const DEFAULTS = Object.freeze({ tax: 5, packaging: 5, service: 0.6, reserve: 5, shipping: 2.5, stressShipping: 3 });
+  const DEFAULTS = Object.freeze({ putianTax: 1.5, yiwuTax: 5, packaging: 5, service: 0.6, reserve: 5, shipping: 2.5, stressShipping: 3 });
   const ACTIONS = ["优先复发", "小批复测", "运费敏感", "样本待积累", "待补成本或规格", "暂缓复发"];
   const num = new Intl.Collator("zh-CN", { numeric: true });
   const clean = value => String(value ?? "").normalize("NFKC").trim();
@@ -25,15 +25,34 @@
   }
   function optionsFrom(input) {
     const result = { ...DEFAULTS, ...input };
-    for (const key of ["tax", "packaging", "service", "reserve", "shipping", "stressShipping"]) {
+    for (const key of ["putianTax", "yiwuTax", "packaging", "service", "reserve", "shipping", "stressShipping"]) {
       const n = result[key];
       if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || n > (key.toLowerCase().includes("shipping") ? 1000 : 100)) {
         throw new Error("费用参数超出范围，请核对税率、损耗比例和运费。");
       }
     }
-    if (result.tax + result.service + result.reserve > 100) throw new Error("税率、技术服务费率和退款损耗率合计不能超过 100%。");
+    if (Math.max(result.putianTax, result.yiwuTax) + result.service + result.reserve > 100) throw new Error("税率、技术服务费率和退款损耗率合计不能超过 100%。");
     if (result.stressShipping < result.shipping) throw new Error("对照运费不能低于基础运费。");
     return result;
+  }
+
+  function warehouseOf(value) {
+    const label = clean(value);
+    const putian = label.includes("莆田");
+    const yiwu = label.includes("义乌");
+    return putian === yiwu ? "" : putian ? "莆田" : "义乌";
+  }
+
+  function taxBasis(receipt, shippedFrom, match) {
+    const warehouse = warehouseOf(shippedFrom);
+    if (warehouse) return { [warehouse]: receipt };
+    if (!receipt) return {};
+    if (!match || Object.hasOwn(match.costByWarehouse, "其他")) return null;
+    const split = Object.entries(match.costByWarehouse);
+    if (split.length === 1) return { [split[0][0]]: receipt };
+    if (!match.price) return null;
+    const putianReceipt = receipt * match.costByWarehouse.莆田 / match.price;
+    return { 莆田: putianReceipt, 义乌: receipt - putianReceipt };
   }
 
   function costMatcher(costs) {
@@ -49,8 +68,8 @@
     for (const cost of costs) {
       const code = codeKey(cost.code);
       const tag = clean(cost.warehouse);
-      const warehouse = tag.includes("莆田") ? "莆田" : tag.includes("义乌") ? "义乌" : "其他";
-      const entry = { price: cost.price, warehouse: tag || "自有成本表" };
+      const warehouse = warehouseOf(tag) || "其他";
+      const entry = { price: cost.price, warehouse: tag || "自有成本表", costByWarehouse: { [warehouse]: cost.price } };
       insert(indexes[warehouse], code, entry);
       if (warehouse === "义乌" && /^\d+$/.test(code)) {
         insert(numericYiwu, code.replace(/^0+(?=\d)/, ""), entry);
@@ -63,9 +82,16 @@
     function combine(parts) {
       if (parts.includes(conflict)) return conflict;
       if (!parts.every(Boolean)) return undefined;
+      const costByWarehouse = {};
+      for (const item of parts) {
+        for (const [warehouse, cost] of Object.entries(item.costByWarehouse)) {
+          costByWarehouse[warehouse] = (costByWarehouse[warehouse] ?? 0) + cost;
+        }
+      }
       return {
         price: parts.reduce((sum, item) => sum + item.price, 0),
         warehouse: [...new Set(parts.map(item => item.warehouse))].join(" + "),
+        costByWarehouse,
       };
     }
     function singleWarehouse(key, warehouse) {
@@ -80,7 +106,10 @@
       for (const candidate of new Set([base, ...unitSuffixes.map(s => base + s)])) {
         const item = lookup(candidate, warehouse);
         if (item === conflict) return conflict;
-        if (item !== undefined) return { ...item, price: item.price * qty };
+        if (item !== undefined) return {
+          ...item, price: item.price * qty,
+          costByWarehouse: { [warehouse]: item.price * qty },
+        };
       }
       return undefined;
     }
@@ -102,13 +131,14 @@
   function newLink(id, title) {
     return { id, title, paid: new Set(), refunded: new Set(), kept: new Set(), recent: new Set(), pending: new Set(),
       units: 0, revenue: 0, cost: 0, spend: 0, spendMissing: false, adOrders: 0, adRevenue: 0, noCode: 0, warehouses: new Set(),
-      missing: new Set(), freightUnits: 0, skus: new Map() };
+      missing: new Set(), taxMissing: new Set(), putianReceipt: 0, yiwuReceipt: 0, freightUnits: 0, skus: new Map() };
   }
 
   function resultForLink(a, opt) {
-    const ratio = (opt.tax + opt.service + opt.reserve) / 100;
-    const netBeforeShipping = a.revenue * (1 - ratio) - a.cost * (1 + opt.packaging / 100) - a.spend;
-    const known = !a.missing.size && !a.spendMissing;
+    const tax = (a.putianReceipt * opt.putianTax + a.yiwuReceipt * opt.yiwuTax) / 100;
+    const ratio = (opt.service + opt.reserve) / 100;
+    const netBeforeShipping = a.revenue * (1 - ratio) - tax - a.cost * (1 + opt.packaging / 100) - a.spend;
+    const known = !a.missing.size && !a.taxMissing.size && !a.spendMissing;
     const base = known ? money(cents(netBeforeShipping - a.freightUnits * opt.shipping)) : null;
     const stress = known ? money(cents(netBeforeShipping - a.freightUnits * opt.stressShipping)) : null;
     const specs = [...a.skus].map(([code, s]) => {
@@ -121,12 +151,13 @@
       };
     }).sort((left, right) => right.orders - left.orders || num.compare(left.code, right.code));
     const share = specs.length ? specs.reduce((s, x) => s + x.atPrice, 0) / (a.noCode + specs.reduce((s, x) => s + x.lineCount, 0)) : 0;
-    const status = [a.missing.size ? "缺少成本" : "", a.spendMissing ? "缺少推广花费" : ""].filter(Boolean).join("、") ||
+    const status = [a.missing.size ? "缺少成本" : "", a.taxMissing.size ? "计税仓待核对" : "", a.spendMissing ? "缺少推广花费" : ""].filter(Boolean).join("、") ||
       (a.kept.size ? "可估算" : "无保留订单");
     return { id: a.id, title: a.title || a.id, orders: a.kept.size, recent: a.recent.size, paid: a.paid.size,
       refunded: [...a.refunded].filter(x => !a.kept.has(x)).length, pending: a.pending.size, units: a.units,
       revenue: money(cents(a.revenue)), spend: money(cents(a.spend)), cost: a.missing.size ? null : money(cents(a.cost)),
-      partialCost: money(cents(a.cost)), base, stress, margin: base !== null && a.revenue ? base / a.revenue : null, adOrders: a.adOrders,
+      partialCost: money(cents(a.cost)), putianReceipt: money(cents(a.putianReceipt)), yiwuReceipt: money(cents(a.yiwuReceipt)),
+      tax: a.taxMissing.size ? null : money(cents(tax)), taxMissing: a.taxMissing.size, base, stress, margin: base !== null && a.revenue ? base / a.revenue : null, adOrders: a.adOrders,
       adRevenue: money(cents(a.adRevenue)), freightUnits: a.freightUnits, missing: a.missing.size, spendMissing: a.spendMissing,
       noCode: a.noCode, costWarehouse: [...a.warehouses].sort().join(" / "), primaryCode: specs[0]?.code ?? "", price: specs[0]?.price ?? null, share, status, specs };
   }
@@ -191,6 +222,7 @@
     const days = new Map();
     const missingCodes = new Map();
     const matcher = costMatcher(costs);
+    const taxPending = new Set();
     let repeated = 0, omitted = 0, missingSpendRows = 0;
     function link(id, title) {
       if (!map.has(id)) map.set(id, newLink(id, title));
@@ -246,6 +278,14 @@
         a.missing.add(row.order);
         if (!missingCodes.has(code)) missingCodes.set(code, new Set());
         missingCodes.get(code).add(row.order);
+      }
+      const taxable = taxBasis(row.receipt, row.warehouse, hit);
+      if (taxable) {
+        a.putianReceipt += taxable.莆田 ?? 0;
+        a.yiwuReceipt += taxable.义乌 ?? 0;
+      } else {
+        a.taxMissing.add(row.order);
+        taxPending.add(row.order);
       }
       if (!code) {
         a.noCode++;
@@ -310,7 +350,9 @@
       pendingAfterSales: presale.size, units: links.reduce((sum, x) => sum + x.units, 0), recent: [...days].filter(([d]) => d >= recentStart)
         .reduce((sum, [, count]) => sum + count, 0), links: links.length,
       revenue: total(links, "revenue"), spend, base: known.length ? total(known, "base") : null,
-      stress: known.length ? total(known, "stress") : null, known: known.length, pending, repeated, omitted,
+      stress: known.length ? total(known, "stress") : null, known: known.length, pending, repeated, omitted, taxPending: taxPending.size,
+      putianReceipt: money(cents([...map.values()].reduce((sum, a) => sum + a.putianReceipt, 0))),
+      yiwuReceipt: money(cents([...map.values()].reduce((sum, a) => sum + a.yiwuReceipt, 0))),
       noOrdersAdSpend: total(links.filter(x => !x.orders), "spend"), promoGap, missingSpendRows,
       priority: templates.filter(x => x.action === "优先复发").length, multi: templates.filter(x => x.linked > 1).length,
     };

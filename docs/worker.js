@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js", "./reports.js");
+importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.1.0", "./reports.js?v=1.1.0");
 
 let result = null;
 const snapshotUrl = "https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json";
@@ -78,7 +78,10 @@ function workbookFor(r) {
     ["商家实收（元）", s.revenue], ["商品推广花费（元）", s.spend], ["推广总计与明细差额", p(s.promoGap)],
     ["基础运费下可估算链接利润（元）", p(s.base)], ["对照运费下可估算链接利润（元）", p(s.stress)],
     ["优先复发模板组", s.priority], ["同码同价多链接组", s.multi], ["无保留单推广花费（元）", s.noOrdersAdSpend],
-    ["税率", o.tax / 100, "按保留订单商家实收计提"], ["包装损耗率", o.packaging / 100, "按商品成本计提"],
+    ["莆田税点", o.putianTax + "%", "对莆田保留单实收计提"],
+    ["义乌税点", o.yiwuTax + "%", "对义乌保留单实收计提"],
+    ["莆田计税实收", s.putianReceipt], ["义乌计税实收", s.yiwuReceipt], ["计税仓待核对订单", s.taxPending],
+    ["分仓计税", "优先按明确发货仓；缺发货仓按成本匹配。跨仓组合按仓库成本占比分摊实收。"], ["包装损耗率", o.packaging / 100, "按商品成本计提"],
     ["技术服务费率", o.service / 100, "按保留订单商家实收计提"], ["退款损耗预留率", o.reserve / 100, "按保留订单商家实收估提"],
     ["基础运费（元/单）", o.shipping], ["对照运费（元/单）", o.stressShipping],
     ["成本匹配顺序", "先匹配莆田，未匹配时查义乌；包含套数和组合规格"],
@@ -86,7 +89,7 @@ function workbookFor(r) {
     ["估算公式", "实收 − 商品成本 − 包装损耗 − 推广费用 − 税费 − 技术服务费 − 运费 − 退款损耗预留"],
     ["模板归并", "全部已成交规格的编码与各规格常见实收单价完全一致时归并。部分重叠见专表。"],
     ["推荐口径", "对照运费下利润为正、至少两条链接各有五单且盈利，组累计≥20单，近期≥10单且占比≥12%，各链接主价比例≥50%。"],
-    ["利润边界", "以本次导入成本表为准。缺成本或推广花费的链接估算利润留空。"],
+    ["利润边界", "以本次导入成本表为准。缺成本、推广花费或计税仓的链接估算利润留空。"],
     ["文件边界", "请确保各表属于同一店铺。订单以成交日筛选，订单总数不用于跨商品 ID 的简单相加。"],
     ["去重与运费", "同订单内的多个有效商品链接各计一单，整店只计一单，运费在链接间平摊。"],
     ["订单文件", r.info.orderNames.join(" / ")], ["推广文件", r.info.promoName], ["成本文件", r.info.costNames.join(" / ") || "未导入"],
@@ -97,10 +100,10 @@ function workbookFor(r) {
     x.margin, x.revenue, x.spend, x.signatureText, x.share]), [8,9,11,12], [10,14], [12,18,48,20,12,12,14,18,15,15,14,16,16,74,20]);
   add("链接盈亏", ["排名", "商品ID", "商品标题", "模板号", "保留单", "近30天单", "商品件数", "已付单", "退款单", "售后处理中",
     "商家实收", "推广花费", "匹配商品成本", "基础利润", "对照利润", "基础利润率", "主销规格编码", "主销实收单价",
-    "缺成本单", "状态", "推广净成交笔数", "推广净交易额", "运费计费单数", "无规格编码行", "发布建议", "匹配成本仓"],
+    "缺成本单", "状态", "推广净成交笔数", "推广净交易额", "运费计费单数", "无规格编码行", "发布建议", "匹配成本仓", "莆田计税实收", "义乌计税实收", "估算税费", "计税仓待核对单"],
   r.links.map(x => [x.rank, x.id, x.title, x.template, x.orders, x.recent, x.units, x.paid, x.refunded, x.pending, x.revenue,
     x.spend, x.partialCost, x.base, x.stress, x.margin, x.primaryCode, x.price, x.missing, x.status, x.adOrders, x.adRevenue,
-    x.freightUnits, x.noCode, x.action, x.costWarehouse]), [10,11,12,13,14,17,21], [15], [9,20,48,12]);
+    x.freightUnits, x.noCode, x.action, x.costWarehouse, x.putianReceipt, x.yiwuReceipt, x.tax, x.taxMissing]), [10,11,12,13,14,17,21,26,27,28], [15], [9,20,48,12]);
   add("规格成交证据", ["模板号", "商品ID", "商品标题", "规格编码", "规格描述", "保留订单", "件数", "常见实收单价",
     "常见买家实付单价", "最低实收单价", "最高实收单价", "主价行占比", "缺成本单", "匹配成本仓"],
   r.specs.map(x => [x.template, x.id, x.title, x.code, x.description, x.orders, x.units, x.price, x.buyer, x.lower, x.upper, x.share, x.missing, x.costWarehouse]),

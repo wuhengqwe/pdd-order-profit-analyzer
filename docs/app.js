@@ -7,14 +7,14 @@
   const fmtMoney = new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" });
   const compare = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
   const pageSize = 25;
-  const options = ["tax", "shipping", "stressShipping", "packaging", "service", "reserve"];
+  const options = ["putianTax", "yiwuTax", "shipping", "stressShipping", "packaging", "service", "reserve"];
   const labels = { templates: "模板清单", links: "链接盈亏", specs: "规格与价格", overlaps: "重叠规格" };
   const headers = {
     templates: [["id","模板号"],["title","代表商品"],["action","发布建议"],["linked","同组链接", "count"],["orders","保留单","count"],
       ["recent","近 30 天","count"],["base","基础利润","money"],["stress","对照利润","money"],["spend","推广费","money"]],
     links: [["rank","出单排名","count"],["title","商品链接"],["template","模板号"],["orders","保留单","count"],["units","商品件数","count"],
       ["recent","近 30 天","count"],["base","基础利润","money"],["stress","对照利润","money"],["spend","推广费","money"],
-      ["costWarehouse","匹配成本仓"]],
+      ["costWarehouse","匹配成本仓"],["tax","估算税费","money"]],
     specs: [["code","规格编码"],["title","商品链接"],["template","模板号"],["orders","保留单","count"],["units","商品件数","count"],
       ["price","最常见实收单价","money"],["lower","最低实收单价","money"],["upper","最高实收单价","money"],["costWarehouse","匹配成本仓"]],
     overlaps: [["code","规格编码"],["price","最常见实收单价","money"],["links","涉及链接","count"],["groups","模板组","count"],
@@ -87,7 +87,7 @@
   function start(message) {
     invalidate();
     try {
-      const worker = new Worker("./worker.js?v=1.0.0");
+      const worker = new Worker("./worker.js?v=1.1.0");
       state.worker = worker;
       worker.addEventListener("message", ({ data }) => {
         if (worker !== state.worker) return;
@@ -146,7 +146,7 @@
     $("results").hidden = false;
     $("result-title").textContent = demo ? "示例分析结果" : "分析结果";
     const snapshot = r.info.snapshotDate ? " · 成本快照 " + r.info.snapshotDate.slice(0,10) : "";
-    $("result-scope").textContent = r.start + " 至 " + r.end + " · 税点 " + o.tax + "% · 运费 " +
+    $("result-scope").textContent = r.start + " 至 " + r.end + " · 莆田税点 " + o.putianTax + "% · 义乌税点 " + o.yiwuTax + "% · 运费 " +
       fmtMoney.format(o.shipping) + " / 对照 " + fmtMoney.format(o.stressShipping) + snapshot;
     $("metrics").replaceChildren(
       metric("保留订单", fmtCount.format(s.retained), "原始订单 " + fmtCount.format(s.raw) + " 单"),
@@ -157,7 +157,8 @@
     );
     const warnings = [];
     if (!r.info.hasCosts) warnings.push("本次未导入成本表。成交链接的利润和盈利模板建议需补齐成本后再看。");
-    else if (s.pending) warnings.push(s.pending + " 条链接缺成本或推广花费，利润留空。");
+    else if (s.pending) warnings.push(s.pending + " 条链接缺成本、推广花费或计税仓，利润留空。");
+    if (s.taxPending && r.info.hasCosts) warnings.push(s.taxPending + " 笔保留订单的计税仓待核对。自有成本表可在「仓库」列填写莆田或义乌。");
     if (s.promoGap !== null && Math.abs(s.promoGap) > .02) warnings.push("推广报表总计与商品明细相差 " + fmtMoney.format(s.promoGap) + "。差额未分摊到链接，请核对推广报表。");
     if (!r.info.namedPeriod && !r.info.datedPromo) warnings.push("推广文件未识别出日期，请核对其与分析区间和店铺一致。");
     if (!demo && r.info.observed[0] && (r.info.observed[0] > r.start || r.info.observed[1] < r.end)) {

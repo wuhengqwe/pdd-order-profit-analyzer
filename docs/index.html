@@ -6,8 +6,8 @@
   <meta name="description" content="在浏览器中合并拼多多订单与商品推广报表，核算链接盈亏并筛选同码同价模板。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'; connect-src https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json; base-uri 'none'; form-action 'none'">
   <title>拼多多出单分析</title>
-  <link rel="stylesheet" href="./style.css?v=1.0.0">
-  <script src="./app.js?v=1.0.0" defer></script>
+  <link rel="stylesheet" href="./style.css?v=1.1.0">
+  <script src="./app.js?v=1.1.0" defer></script>
 </head>
 <body>
   <a href="#workspace" class="skip">跳到报表导入</a>
@@ -81,7 +81,7 @@
       <section class="card setup-settings" aria-labelledby="settings-title">
         <div class="card-heading">
           <h2 id="settings-title">分析口径</h2>
-          <p>可按自己的店铺调整费用。</p>
+          <p>按发货仓或成本匹配结果应用税点。</p>
         </div>
         <fieldset class="dates">
           <legend>统计区间</legend>
@@ -92,7 +92,10 @@
           <p id="date-help" class="hint">留空时优先读取推广报表上的日期范围。</p>
         </fieldset>
         <div class="fields base-fees">
-          <div><label for="tax">税点（%）</label><input type="number" min="0" max="100" step="0.01" id="tax" name="tax" value="5" required></div>
+          <div><label for="putianTax">莆田税点（%）</label><input type="number" min="0" max="100" step="0.01" id="putianTax" name="putianTax" value="1.5" required></div>
+          <div><label for="yiwuTax">义乌税点（%）</label><input type="number" min="0" max="100" step="0.01" id="yiwuTax" name="yiwuTax" value="5" required></div>
+        </div>
+        <div class="fields base-fees">
           <div><label for="shipping">运费（元/单）</label><input type="number" min="0" max="1000" step="0.01" id="shipping" name="shipping" value="2.50" required></div>
           <div><label for="stressShipping">对照运费（元/单）</label><input type="number" min="0" max="1000" step="0.01" id="stressShipping" name="stressShipping" value="3.00" required></div>
         </div>
@@ -160,7 +163,7 @@
         <h3>报表与成本</h3>
         <p>订单需要商品 ID、订单号、成交时间、订单状态、数量、商家实收和规格编码。推广表需要商品 ID 和总花费。使用自有成本表时，请将编码按文本保留前导零。<a href="./cost-template.csv" download>下载成本表模板</a></p>
         <h3>订单与利润</h3>
-        <p>订单按订单号去重，排除未支付、取消和退款成功记录。订单数与商品件数分别统计。利润扣减商品成本、包装损耗、推广费、税费、技术服务费、运费和退款损耗预留。缺成本或缺推广花费的链接，利润留空。</p>
+        <p>订单按订单号去重，排除未支付、取消和退款成功记录。订单数与商品件数分别统计。利润扣减商品成本、包装损耗、推广费、税费、技术服务费、运费和退款损耗预留。莆田默认按 1.5%、义乌按 5% 计税。优先按报表里的明确发货仓。缺发货仓时按成本匹配判定，跨仓组合按仓库成本比分摊实收。缺成本、推广花费或计税仓的链接，利润留空。</p>
         <h3>同模板识别</h3>
         <p>先按商品 ID 归集，再用各规格的编码和最常见的商家实收单价归并。同组复用前请核对完整在售 SKU。按对照运费仍盈利、且有多条链接近期出单的组优先选择。</p>
       </div>
