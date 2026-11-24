@@ -162,35 +162,53 @@
       noCode: a.noCode, costWarehouse: [...a.warehouses].sort().join(" / "), primaryCode: specs[0]?.code ?? "", price: specs[0]?.price ?? null, share, status, specs };
   }
 
-  function templatesFor(links) {
+  function templatesFor(links, indexed, listing) {
     const groups = new Map();
     for (const row of links) {
-      if (!row.orders) continue;
+      const item = listing.get(row.id);
+      if (!row.orders && !item) continue;
       const signature = row.noCode ? [] : row.specs.map(s => [s.code, s.price]).sort(([a], [b]) => num.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0));
-      const key = signature.length ? JSON.stringify(signature) : "missing:" + row.id;
-      if (!groups.has(key)) groups.set(key, { signature, members: [] });
+      const key = item ? "listing:" + item.template : signature.length ? JSON.stringify(signature) : "missing:" + row.id;
+      if (!groups.has(key)) groups.set(key, { signature, listingTemplate: item?.template, members: [] });
       groups.get(key).members.push(row);
     }
-    const templates = [...groups.values()].map(({ signature, members }) => {
+    const templates = [...groups.values()].map(({ signature, listingTemplate, members }) => {
+      const sold = members.filter(x => x.orders > 0);
+      if (listingTemplate) {
+        const observedPrices = new Map();
+        for (const row of sold) {
+          for (const { code, price } of row.specs) observedPrices.set(JSON.stringify([code, price]), [code, price]);
+        }
+        signature = [...observedPrices.values()].sort(([a, p], [b, q]) => num.compare(a,b) || p - q);
+      }
       const total = field => members.reduce((sum, link) => sum + link[field], 0);
-      const orders = total("orders");
-      const recent = total("recent");
+      const uniqueOrders = new Set();
+      const uniqueRecent = new Set();
+      for (const link of sold) {
+        const source = indexed.get(link.id);
+        for (const order of source.kept) uniqueOrders.add(order);
+        for (const order of source.recent) uniqueRecent.add(order);
+      }
+      const orders = uniqueOrders.size;
+      const recent = uniqueRecent.size;
+      const listedLinks = listingTemplate ? members.filter(x => x.listed).length : null;
+      const orderRate = listedLinks ? orders / listedLinks : null;
       const revenue = money(cents(total("revenue")));
       const spend = money(cents(total("spend")));
       const complete = members.every(link => link.base !== null);
       const base = complete ? money(cents(total("base"))) : null;
       const stress = complete ? money(cents(total("stress"))) : null;
       const solid = members.filter(x => x.stress > 0 && x.orders >= 5).length;
-      const share = members.reduce((min, x) => Math.min(min, x.share), 1);
+      const share = sold.reduce((min, x) => Math.min(min, x.share), 1);
       const rep = [...members].sort((a, b) => Number(b.stress > 0) - Number(a.stress > 0) || b.recent - a.recent ||
         b.orders - a.orders || (b.stress || 0) - (a.stress || 0) || num.compare(a.id, b.id))[0];
       let action = "样本待积累";
-      if (!complete || !signature.length) action = "待补成本或规格";
-      else if (base <= 0) action = "暂缓复发";
-      else if (stress <= 0) action = "运费敏感";
+      if (!complete || (orders > 0 && !signature.length)) action = "待补成本或规格";
+      else if (base <= 0 && (orders > 0 || spend > 0)) action = "暂缓复发";
+      else if (stress <= 0 && orders > 0) action = "运费敏感";
       else if (solid >= 2 && orders >= 20 && recent >= Math.max(10, orders * .12) && share >= .5) action = "优先复发";
       else if (rep.orders >= 10 && recent >= 3 && share >= .5) action = "小批复测";
-      return { action, rep: rep.id, title: rep.title, linked: members.length, solid, orders, recent, base, stress,
+      return { action, rep: rep.id, title: rep.title, linked: sold.length, listedLinks, orderRate, listingTemplate, solid, orders, recent, base, stress,
         margin: base !== null && revenue ? base / revenue : null, revenue, spend, share, signature,
         signatureText: signature.map(([code, p]) => code + " ¥" + p.toFixed(2)).join(" / "), members };
     });
@@ -208,7 +226,7 @@
     return templates;
   }
 
-  function analyze({ orders, promos, costs, options, start, end, info = {} }) {
+  function analyze({ orders, promos, costs, listing = new Map(), options, start, end, info = {} }) {
     const opt = optionsFrom(options);
     if (!isoDay(start) || !isoDay(end) || start > end) throw new Error("请核对分析开始日期与结束日期。");
     const recentStart = shiftDay(end, -29);
@@ -318,10 +336,16 @@
         missingSpendRows++;
       }
     }
-    const links = [...map.values()].map(a => resultForLink(a, opt));
+    for (const item of listing.values()) if (item.active) link(item.id, item.title);
+    const links = [...map.values()].map(a => {
+      const result = resultForLink(a, opt);
+      const item = listing.get(a.id);
+      result.listed = item?.active ?? null;
+      return result;
+    });
     links.sort((a, b) => b.orders - a.orders || b.recent - a.recent || b.revenue - a.revenue || b.spend - a.spend || num.compare(a.id, b.id));
     links.forEach((r, i) => { r.rank = i + 1; });
-    const templates = templatesFor(links);
+    const templates = templatesFor(links, map, listing);
     const specs = [];
     const similar = new Map();
     for (const a of links) {
@@ -355,6 +379,8 @@
       yiwuReceipt: money(cents([...map.values()].reduce((sum, a) => sum + a.yiwuReceipt, 0))),
       noOrdersAdSpend: total(links.filter(x => !x.orders), "spend"), promoGap, missingSpendRows,
       priority: templates.filter(x => x.action === "优先复发").length, multi: templates.filter(x => x.linked > 1).length,
+      listed: [...listing.values()].filter(x => x.active).length,
+      rateTemplates: templates.filter(x => x.orderRate !== null).length,
     };
     if (!links.length) throw new Error("所选日期内没有可分析的成交或商品推广明细。请检查分析区间和报表内容。");
     return { start, end, info, opt, stats, templates, links, specs, overlaps, missingCosts: [...missingCodes]

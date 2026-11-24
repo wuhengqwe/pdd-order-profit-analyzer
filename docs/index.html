@@ -6,8 +6,8 @@
   <meta name="description" content="在浏览器中合并拼多多订单与商品推广报表，核算链接盈亏并筛选同码同价模板。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'; connect-src https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json; base-uri 'none'; form-action 'none'">
   <title>拼多多出单分析</title>
-  <link rel="stylesheet" href="./style.css?v=1.1.0">
-  <script src="./app.js?v=1.1.0" defer></script>
+  <link rel="stylesheet" href="./style.css?v=1.2.0">
+  <script src="./app.js?v=1.2.0" defer></script>
 </head>
 <body>
   <a href="#workspace" class="skip">跳到报表导入</a>
@@ -57,6 +57,16 @@
           </div>
           <input type="file" id="promo-file" name="promo" class="sr-only file-input" aria-describedby="promo-help promo-name" accept=".xls,.xlsx,.csv,.tsv" required>
           <label for="promo-file" class="button file-button" aria-hidden="true">选择文件</label>
+        </div>
+
+        <div class="file-block">
+          <div class="file-info">
+            <label for="listing-file">同模板上架清单 <span class="required">选填</span></label>
+            <p id="listing-help">计算出单率需包含同模板的全部上架链接，包括零单链接。<a href="./listing-template.csv" download>下载模板</a></p>
+            <p class="selected" id="listing-name">CSV 或 Excel · 商品 ID、模板标识、上架状态</p>
+          </div>
+          <input type="file" id="listing-file" name="listing" class="sr-only file-input" aria-describedby="listing-help listing-name" accept=".csv,.xls,.xlsx,.tsv">
+          <label for="listing-file" class="button file-button" aria-hidden="true">选择文件</label>
         </div>
 
         <fieldset class="cost-options">
@@ -165,7 +175,9 @@
         <h3>订单与利润</h3>
         <p>订单按订单号去重，排除未支付、取消和退款成功记录。订单数与商品件数分别统计。利润扣减商品成本、包装损耗、推广费、税费、技术服务费、运费和退款损耗预留。莆田默认按 1.5%、义乌按 5% 计税。优先按报表里的明确发货仓。缺发货仓时按成本匹配判定，跨仓组合按仓库成本比分摊实收。缺成本、推广花费或计税仓的链接，利润留空。</p>
         <h3>同模板识别</h3>
-        <p>先按商品 ID 归集，再用各规格的编码和最常见的商家实收单价归并。同组复用前请核对完整在售 SKU。按对照运费仍盈利、且有多条链接近期出单的组优先选择。</p>
+        <p>有上架清单时按清单中的实际模板标识归并。其余链接按成交规格编码与最常见的商家实收单价归并。同组复用前请核对完整在售 SKU。</p>
+        <h3>出单率</h3>
+        <p>模板保留订单数除以该模板已上架链接数，单位为单/链接。分母包括清单中的零单上架链接。历史订单与上架清单按商品 ID 关联，清单的统计范围请与分析目的保持一致。</p>
       </div>
     </details>
   </main>
