@@ -184,11 +184,11 @@ test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本",
   assert.equal(topLink["保留单"], 40);
   const template = XLSX.utils.sheet_to_json(book.Sheets["模板清单"])[0];
   assert.equal(template["保留单"], 67);
-  assert.deepEqual(template["同组商品ID"].split(" / "), ["900000000001", "900000000002"]);
+  assert.deepEqual(template["同组商品ID"].split(", "), ["900000000001", "900000000002"]);
   assert.equal(topLink["同组其他商品ID"], "900000000002");
   assert.equal(topLink["同组保留单"], 67);
   assert.equal(topLink["同组其他链接出单明细"], "900000000002（27单）");
-  assert.equal(template["同组链接出单明细"], "900000000001（40单） / 900000000002（27单）");
+  assert.equal(template["同组链接出单明细"], "900000000001（40单）, 900000000002（27单）");
   const links = XLSX.utils.sheet_to_json(book.Sheets["链接盈亏"]);
   assert.equal(links.find(x=>x["商品ID"]==="900000000001")["同组其他商品ID"], "900000000002");
   assert.equal(links.find(x=>x["商品ID"]==="900000000002")["同组其他商品ID"], "900000000001");

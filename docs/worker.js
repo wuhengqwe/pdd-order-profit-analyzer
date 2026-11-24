@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.7.0", "./reports.js?v=1.7.0");
+importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.7.1", "./reports.js?v=1.7.1");
 
 let result = null;
 const snapshotUrl = "https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json";
@@ -78,17 +78,18 @@ function workbookFor(r) {
     if (!members?.length) return "";
     const visible = [];
     const limit = currentId === null ? Infinity : 100;
+    const separator = ", ";
     let chars = 0;
     for (const id of members) {
       if (id === currentId) continue;
       const label = withOrders ? id + "（" + ordersByLink.get(id) + "单）" : id;
-      if (visible.length >= limit || chars + label.length + 3 > 31000) break;
+      if (visible.length >= limit || chars + label.length + separator.length > 31000) break;
       visible.push(label);
-      chars += label.length + 3;
+      chars += label.length + separator.length;
     }
     const remaining = members.length - (currentId === null ? 0 : 1) - visible.length;
     if (remaining) visible.push("另 " + remaining + " 条，按模板号筛选查看");
-    return visible.join(" / ");
+    return visible.join(separator);
   }
   add("总览与口径", ["项目", "值", "说明"], [
     ["分析起始日", r.start], ["分析结束日", r.end], ["原始订单数", s.raw], ["保留订单数", s.retained,
