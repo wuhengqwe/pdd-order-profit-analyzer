@@ -4,27 +4,24 @@
   const $ = id => document.getElementById(id);
   const normalize = value => String(value ?? "").normalize("NFKC").trim().toLocaleLowerCase("zh-CN");
   const fmtCount = new Intl.NumberFormat("zh-CN");
-  const fmtRate = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
   const fmtMoney = new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" });
   const compare = new Intl.Collator("zh-CN", { numeric: true, sensitivity: "base" });
   const pageSize = 25;
   const options = ["putianTax", "yiwuTax", "shipping", "stressShipping", "packaging", "service", "reserve"];
-  const labels = { templates: "模板清单", leaders: "模板最高单量链接", links: "链接盈亏", specs: "规格与价格", overlaps: "重叠规格", rateDetails: "出单率核对" };
+  const labels = { templates: "模板清单", leaders: "模板最高单量链接", links: "链接盈亏", specs: "规格与价格", overlaps: "重叠规格" };
   const headers = {
-    templates: [["id","模板号"],["title","代表商品"],["action","发布建议"],["linked","出单链接", "count"],["listedLinks","分母链接数","count"],["orders","保留单","count"],["orderRate","出单率（单/链接）","rate"],
+    templates: [["id","模板号"],["title","代表商品"],["action","发布建议"],["linked","出单链接", "count"],["orders","保留单","count"],
       ["recent","近 30 天","count"],["base","基础利润","money"],["stress","对照利润","money"],["spend","推广费","money"]],
     leaders: [["template","模板号"],["title","最高单量链接"],["orders","保留单","count"],["recent","近 30 天","count"],
       ["units","商品件数","count"],["refunded","退款单","count"],["revenue","商家实收","money"],["spend","推广费","money"],
       ["tax","估算税费","money"],["base","基础利润","money"],["stress","对照利润","money"],["costWarehouse","匹配成本仓"]],
     links: [["rank","出单排名","count"],["title","商品链接"],["template","模板号"],["orders","保留单","count"],["units","商品件数","count"],
       ["recent","近 30 天","count"],["base","基础利润","money"],["stress","对照利润","money"],["spend","推广费","money"],
-      ["costWarehouse","匹配成本仓"],["tax","估算税费","money"],["listed","上架状态"]],
+      ["costWarehouse","匹配成本仓"],["tax","估算税费","money"]],
     specs: [["code","规格编码"],["title","商品链接"],["template","模板号"],["orders","保留单","count"],["units","商品件数","count"],
       ["price","最常见实收单价","money"],["lower","最低实收单价","money"],["upper","最高实收单价","money"],["costWarehouse","匹配成本仓"]],
     overlaps: [["code","规格编码"],["price","最常见实收单价","money"],["links","涉及链接","count"],["groups","模板组","count"],
       ["orders","规格保留单","count"],["templates","模板组编号"]],
-    rateDetails: [["id","商品 ID"],["title","商品"],["template","模板号"],["evidence","归组依据"],
-      ["counted","计入分母"],["source","数据来源"]],
   };
 
   const state = { result: null, view: "templates", renderedView: "", sort: {}, page: 0, worker: null, waiting: false };
@@ -93,7 +90,7 @@
   function start(message) {
     invalidate();
     try {
-      const worker = new Worker("./worker.js?v=1.4.0");
+      const worker = new Worker("./worker.js?v=1.5.0");
       state.worker = worker;
       worker.addEventListener("message", ({ data }) => {
         if (worker !== state.worker) return;
@@ -171,8 +168,6 @@
       warnings.push("订单文件中有成交记录的日期为 " + r.info.observed.join(" 至 ") + "，请确认分析区间内的订单报表均已导入。");
     }
     if (r.info.transactionSpendRows) warnings.push(fmtCount.format(r.info.transactionSpendRows) + " 行推广明细缺总花费，已取成交花费。");
-    if (s.promoUnresolved) warnings.push("推广报表中有 " + fmtCount.format(s.promoUnresolved) + " 个商品 ID 待确认为同模板，分母采用可归组的商品，可在「出单率核对」查看依据。");
-    if (s.promoMissingSold && !r.info.listingName) warnings.push(fmtCount.format(s.promoMissingSold) + " 个出过单的商品 ID 未在推广表出现，相关模板的分母仅覆盖推广报表范围。");
     if (s.repeated) warnings.push("已合并 " + fmtCount.format(s.repeated) + " 行重复订单明细。");
     if (s.pendingAfterSales) warnings.push(s.pendingAfterSales + " 笔售后处理中订单暂计入保留单。");
     $("warnings").replaceChildren(...warnings.map(value => el("li", value)));
@@ -216,7 +211,6 @@
   function rowKey(item) {
     if (state.view === "specs") return JSON.stringify([item.id, item.code]);
     if (state.view === "overlaps") return JSON.stringify([item.code, item.price]);
-    if (state.view === "rateDetails") return JSON.stringify([item.id, item.source]);
     return item.id;
   }
   function rowElement(item) {
@@ -232,14 +226,8 @@
         button.setAttribute("aria-label", "查看模板 " + v + " 的成员链接");
         cell.append(button);
       } else if (field === "title") {
-        cell.append(el("span", v));
-        if (state.view === "rateDetails") {
-          if (item.promotionName) cell.append(el("small", item.promotionName));
-        } else cell.append(el("small", "商品 ID " + (item.rep ?? item.id)));
-        if (state.view === "templates") {
-          if (item.listingTemplate) cell.append(el("small", "清单模板 " + item.listingTemplate));
-          if (item.signatureText) cell.append(el("small", item.signatureText, "sku-prices"));
-        }
+        cell.append(el("span", v), el("small", "商品 ID " + (item.rep ?? item.id)));
+        if (state.view === "templates" && item.signatureText) cell.append(el("small", item.signatureText, "sku-prices"));
       } else if (field === "action") {
         cell.append(el("span", v, "tag " + (v === "优先复发" ? "priority" : v === "暂缓复发" ? "loss" : "")));
       } else if (field === "templates") {
@@ -247,16 +235,6 @@
       } else if (type === "money") {
         cell.textContent = displayMoney(v);
         if (field === "base" || field === "stress") signed(cell, v);
-      } else if (type === "rate") {
-        if (v == null) cell.textContent = "—";
-        else {
-          cell.append(el("span", fmtRate.format(v)));
-          if (item.rateSource) cell.append(el("small", item.estimatedLinks ? "含 " + item.estimatedLinks + " 个推断 ID" : item.rateSource));
-        }
-      } else if (field === "counted") {
-        cell.textContent = v ? "是" : "待核对或由清单覆盖";
-      } else if (field === "listed") {
-        cell.textContent = v === true ? "在售" : v === false ? "已下架" : "—";
       } else if (type === "count") {
         cell.textContent = v == null ? "—" : fmtCount.format(v);
       } else {
@@ -275,7 +253,7 @@
       if (filter && item.action !== filter) return false;
       if (!query) return true;
       return [item.id, item.rep, item.title, item.code, item.primaryCode, item.signatureText, item.template,
-        item.listingTemplate, item.promotionName, item.evidence, item.ids?.join(" "), item.templates?.join(" ")].some(field => normalize(field).includes(query));
+        item.ids?.join(" "), item.templates?.join(" ")].some(field => normalize(field).includes(query));
     });
     const sort = state.sort[state.view];
     if (sort) {
@@ -327,7 +305,6 @@
     if (event.target.name === "costSource") switchCost();
     fileLabel("orders-file", "orders-name", "支持多个 CSV、Excel 或 ZIP");
     fileLabel("promo-file", "promo-name", "支持 XLS、XLSX、CSV");
-    fileLabel("listing-file", "listing-name", "CSV 或 Excel · 商品 ID、模板标识、上架状态");
     fileLabel("cost-file", "cost-name", "可选择多份表格，按「仓库」列区分莆田和义乌");
   });
   $("setup").addEventListener("invalid", event => {
@@ -344,7 +321,7 @@
     if (params.start && params.end && params.start > params.end) return showError("结束日期须等于或晚于开始日期。", $("end"));
     if (params.options.stressShipping < params.options.shipping) return showError("对照运费须等于或高于基础运费。", $("stressShipping"));
     start({ kind: "analyze", params, files: {
-      order: [...$("orders-file").files], promo: [...$("promo-file").files], listing: [...$("listing-file").files],
+      order: [...$("orders-file").files], promo: [...$("promo-file").files],
       cost: params.costSource === "custom" ? [...$("cost-file").files] : [],
     } });
   });

@@ -6,8 +6,8 @@
   <meta name="description" content="在浏览器中合并拼多多订单与商品推广报表，核算链接盈亏并筛选同码同价模板。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'; connect-src https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json; base-uri 'none'; form-action 'none'">
   <title>拼多多出单分析</title>
-  <link rel="stylesheet" href="./style.css?v=1.4.0">
-  <script src="./app.js?v=1.4.0" defer></script>
+  <link rel="stylesheet" href="./style.css?v=1.5.0">
+  <script src="./app.js?v=1.5.0" defer></script>
 </head>
 <body>
   <a href="#workspace" class="skip">跳到报表导入</a>
@@ -57,16 +57,6 @@
           </div>
           <input type="file" id="promo-file" name="promo" class="sr-only file-input" aria-describedby="promo-help promo-name" accept=".xls,.xlsx,.csv,.tsv" required>
           <label for="promo-file" class="button file-button" aria-hidden="true">选择文件</label>
-        </div>
-
-        <div class="file-block">
-          <div class="file-info">
-            <label for="listing-file">同模板上架清单 <span class="required">选填</span></label>
-            <p id="listing-help">出单率默认使用推广报表。可选上传完整上架清单，按实际模板标识核对。<a href="./listing-template.csv" download>下载模板</a></p>
-            <p class="selected" id="listing-name">CSV 或 Excel · 商品 ID、模板标识、上架状态</p>
-          </div>
-          <input type="file" id="listing-file" name="listing" class="sr-only file-input" aria-describedby="listing-help listing-name" accept=".csv,.xls,.xlsx,.tsv">
-          <label for="listing-file" class="button file-button" aria-hidden="true">选择文件</label>
         </div>
 
         <fieldset class="cost-options">
@@ -143,7 +133,6 @@
             <button type="button" data-view="links" aria-pressed="false">链接盈亏</button>
             <button type="button" data-view="specs" aria-pressed="false">规格与价格</button>
             <button type="button" data-view="overlaps" aria-pressed="false">重叠规格</button>
-            <button type="button" data-view="rateDetails" aria-pressed="false">出单率核对</button>
           </nav>
           <search class="filters">
             <label for="query" class="sr-only">搜索商品、模板号或规格编码</label>
@@ -177,10 +166,8 @@
         <h3>订单与利润</h3>
         <p>订单按订单号去重，排除未支付、取消和退款成功记录。订单数与商品件数分别统计。利润扣减商品成本、包装损耗、推广费、税费、技术服务费、运费和退款损耗预留。莆田默认按 1.5%、义乌按 5% 计税。优先按报表里的明确发货仓。缺发货仓时按成本匹配判定，跨仓组合按仓库成本比分摊实收。缺成本、推广花费或计税仓的链接，利润留空。</p>
         <h3>同模板识别</h3>
-        <p>有上架清单时按清单中的实际模板标识归并。其余链接按成交规格编码与最常见的商家实收单价归并。同组复用前请核对完整在售 SKU。</p>
+        <p>按成交规格编码与各规格最常见的商家实收单价归并。同组复用前请核对完整在售 SKU。</p>
         <p>「模板最高单量链接」每组只展示保留订单最多的链接，订单数相同时优先近 30 天订单数较多的链接。</p>
-        <h3>出单率</h3>
-        <p>模板保留订单数除以同模板在推广报表中可归组的去重商品 ID 数，单位为单/链接，包含可归组的零单 ID。只有名称证据的匹配为估算。可选上传实际模板清单，以清单中的已上架链接为分母。</p>
       </div>
     </details>
   </main>

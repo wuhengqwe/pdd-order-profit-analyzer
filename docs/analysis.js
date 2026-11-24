@@ -162,53 +162,42 @@
       noCode: a.noCode, costWarehouse: [...a.warehouses].sort().join(" / "), primaryCode: specs[0]?.code ?? "", price: specs[0]?.price ?? null, share, status, specs };
   }
 
-  function templatesFor(links, indexed, listing) {
+  function templatesFor(links, indexed) {
     const groups = new Map();
     for (const row of links) {
-      const item = listing.get(row.id);
-      if (!row.orders && !item) continue;
+      if (!row.orders) continue;
       const signature = row.noCode ? [] : row.specs.map(s => [s.code, s.price]).sort(([a], [b]) => num.compare(a, b) || (a < b ? -1 : a > b ? 1 : 0));
-      const key = item ? "listing:" + item.template : signature.length ? JSON.stringify(signature) : "missing:" + row.id;
-      if (!groups.has(key)) groups.set(key, { signature, listingTemplate: item?.template, members: [] });
+      const key = signature.length ? JSON.stringify(signature) : "missing:" + row.id;
+      if (!groups.has(key)) groups.set(key, { signature, members: [] });
       groups.get(key).members.push(row);
     }
-    const templates = [...groups.values()].map(({ signature, listingTemplate, members }) => {
-      const sold = members.filter(x => x.orders > 0);
-      if (listingTemplate) {
-        const observedPrices = new Map();
-        for (const row of sold) {
-          for (const { code, price } of row.specs) observedPrices.set(JSON.stringify([code, price]), [code, price]);
-        }
-        signature = [...observedPrices.values()].sort(([a, p], [b, q]) => num.compare(a,b) || p - q);
-      }
+    const templates = [...groups.values()].map(({ signature, members }) => {
       const total = field => members.reduce((sum, link) => sum + link[field], 0);
       const uniqueOrders = new Set();
       const uniqueRecent = new Set();
-      for (const link of sold) {
+      for (const link of members) {
         const source = indexed.get(link.id);
         for (const order of source.kept) uniqueOrders.add(order);
         for (const order of source.recent) uniqueRecent.add(order);
       }
       const orders = uniqueOrders.size;
       const recent = uniqueRecent.size;
-      const listedLinks = listingTemplate ? members.filter(x => x.listed).length : null;
-      const orderRate = listedLinks ? orders / listedLinks : null;
       const revenue = money(cents(total("revenue")));
       const spend = money(cents(total("spend")));
       const complete = members.every(link => link.base !== null);
       const base = complete ? money(cents(total("base"))) : null;
       const stress = complete ? money(cents(total("stress"))) : null;
       const solid = members.filter(x => x.stress > 0 && x.orders >= 5).length;
-      const share = sold.reduce((min, x) => Math.min(min, x.share), 1);
+      const share = members.reduce((min, x) => Math.min(min, x.share), 1);
       const rep = [...members].sort((a, b) => Number(b.stress > 0) - Number(a.stress > 0) || b.recent - a.recent ||
         b.orders - a.orders || (b.stress || 0) - (a.stress || 0) || num.compare(a.id, b.id))[0];
       let action = "样本待积累";
-      if (!complete || (orders > 0 && !signature.length)) action = "待补成本或规格";
-      else if (base <= 0 && (orders > 0 || spend > 0)) action = "暂缓复发";
-      else if (stress <= 0 && orders > 0) action = "运费敏感";
+      if (!complete || !signature.length) action = "待补成本或规格";
+      else if (base <= 0) action = "暂缓复发";
+      else if (stress <= 0) action = "运费敏感";
       else if (solid >= 2 && orders >= 20 && recent >= Math.max(10, orders * .12) && share >= .5) action = "优先复发";
       else if (rep.orders >= 10 && recent >= 3 && share >= .5) action = "小批复测";
-      return { action, rep: rep.id, title: rep.title, linked: sold.length, listedLinks, orderRate, listingTemplate, solid, orders, recent, base, stress,
+      return { action, rep: rep.id, title: rep.title, linked: members.length, solid, orders, recent, base, stress,
         margin: base !== null && revenue ? base / revenue : null, revenue, spend, share, signature,
         signatureText: signature.map(([code, p]) => code + " ¥" + p.toFixed(2)).join(" / "), members };
     });
@@ -226,94 +215,7 @@
     return templates;
   }
 
-  function applyPromotionRates(templates, links, promos, listing) {
-    const byTemplate = new Map(templates.map(row => [row.id, row]));
-    const soldById = new Map(links.filter(row => row.orders > 0).map(row => [row.id, row.template]));
-    const byId = new Map();
-    for (const promo of promos) {
-      if (!byId.has(promo.id)) byId.set(promo.id, []);
-      byId.get(promo.id).push(promo);
-    }
-
-    function keys(row) {
-      const title = selectedText(row.title);
-      const promotion = selectedText(row.promotionName);
-      return [selectedText(row.template), title && promotion ? JSON.stringify([title, promotion]) : "", title];
-    }
-    const indexes = [new Map(), new Map(), new Map()];
-    for (const [id, rows] of byId) {
-      const template = soldById.get(id);
-      if (!template) continue;
-      for (const row of rows) {
-        keys(row).forEach((key, i) => {
-          if (!key) return;
-          const index = indexes[i];
-          if (!index.has(key)) index.set(key, new Set());
-          index.get(key).add(template);
-        });
-      }
-    }
-
-    const counts = new Map();
-    let unresolved = 0, estimated = 0, missingSold = 0;
-    const details = [];
-    for (const [id, entries] of byId) {
-      const row = entries.find(x => x.title) || entries[0];
-      const manual = listing.get(id);
-      const sold = soldById.get(id);
-      let template = sold ?? "";
-      let evidence = sold ? "订单已归组" : "";
-      const candidateLists = indexes.map(() => new Set());
-      if (!template) {
-        for (const entry of entries) {
-          keys(entry).forEach((key, i) => {
-            for (const tid of indexes[i].get(key) || []) candidateLists[i].add(tid);
-          });
-        }
-        const i = candidateLists.findIndex(set => set.size);
-        if (i >= 0 && candidateLists[i].size === 1) {
-          template = [...candidateLists[i]][0];
-          evidence = ["推广模板标识", "同标题及推广名称推断", "同标题唯一模板推断"][i];
-          if (i) estimated++;
-        } else {
-          evidence = i >= 0 ? "对应多个模板，待核对" : "无已知模板样本";
-          unresolved++;
-        }
-      }
-      const counted = Boolean(template && !byTemplate.get(template)?.listingTemplate && !manual);
-      if (counted) {
-        if (!counts.has(template)) counts.set(template, { total: 0, estimated: 0 });
-        const count = counts.get(template);
-        count.total++;
-        if (evidence.endsWith("推断")) count.estimated++;
-      }
-      details.push({ id, title: row.title ?? "", promotionName: row.promotionName ?? "", template,
-        evidence, counted, source: "推广报表" });
-    }
-    for (const row of templates) {
-      const missing = row.memberIds.filter(id => soldById.has(id) && !byId.has(id)).length;
-      row.promoMissing = missing;
-      missingSold += missing;
-      if (row.listingTemplate) {
-        row.rateSource = "上架清单";
-        row.estimatedLinks = 0;
-        for (const id of row.memberIds) {
-          const entry = listing.get(id);
-          if (entry) details.push({ id, title: entry.title || "", promotionName: "", template: row.id,
-            evidence: entry.active ? "在售" : "下架", counted: entry.active, source: "上架清单" });
-        }
-        continue;
-      }
-      const count = counts.get(row.id);
-      row.rateSource = count ? "推广报表" : "";
-      row.listedLinks = count?.total ?? null;
-      row.estimatedLinks = count?.estimated ?? 0;
-      row.orderRate = count ? row.orders / count.total : null;
-    }
-    return { details, promoIds: byId.size, unresolved, estimated, missingSold };
-  }
-
-  function analyze({ orders, promos, costs, listing = new Map(), options, start, end, info = {} }) {
+  function analyze({ orders, promos, costs, options, start, end, info = {} }) {
     const opt = optionsFrom(options);
     if (!isoDay(start) || !isoDay(end) || start > end) throw new Error("请核对分析开始日期与结束日期。");
     const recentStart = shiftDay(end, -29);
@@ -423,17 +325,10 @@
         missingSpendRows++;
       }
     }
-    for (const item of listing.values()) if (item.active) link(item.id, item.title);
-    const links = [...map.values()].map(a => {
-      const result = resultForLink(a, opt);
-      const item = listing.get(a.id);
-      result.listed = item?.active ?? null;
-      return result;
-    });
+    const links = [...map.values()].map(a => resultForLink(a, opt));
     links.sort((a, b) => b.orders - a.orders || b.recent - a.recent || b.revenue - a.revenue || b.spend - a.spend || num.compare(a.id, b.id));
     links.forEach((r, i) => { r.rank = i + 1; });
-    const templates = templatesFor(links, map, listing);
-    const promotionRates = applyPromotionRates(templates, links, promos, listing);
+    const templates = templatesFor(links, map);
     const leadersByTemplate = new Map();
     for (const link of links) {
       if (link.orders > 0 && link.template && !leadersByTemplate.has(link.template)) {
@@ -475,13 +370,9 @@
       yiwuReceipt: money(cents([...map.values()].reduce((sum, a) => sum + a.yiwuReceipt, 0))),
       noOrdersAdSpend: total(links.filter(x => !x.orders), "spend"), promoGap, missingSpendRows,
       priority: templates.filter(x => x.action === "优先复发").length, multi: templates.filter(x => x.linked > 1).length,
-      listed: [...listing.values()].filter(x => x.active).length,
-      rateTemplates: templates.filter(x => x.orderRate !== null).length,
-      promoIds: promotionRates.promoIds, promoUnresolved: promotionRates.unresolved, promoInferred: promotionRates.estimated,
-      promoMissingSold: promotionRates.missingSold,
     };
     if (!links.length) throw new Error("所选日期内没有可分析的成交或商品推广明细。请检查分析区间和报表内容。");
-    return { start, end, info, opt, stats, templates, leaders, links, specs, overlaps, rateDetails: promotionRates.details, missingCosts: [...missingCodes]
+    return { start, end, info, opt, stats, templates, leaders, links, specs, overlaps, missingCosts: [...missingCodes]
       .map(([code, ids]) => ({ code: code || "（空编码）", orders: ids.size })).sort((a, b) => b.orders - a.orders || num.compare(a.code, b.code)),
       days: [...days].sort(([a], [b]) => num.compare(a, b)) };
   }

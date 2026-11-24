@@ -25,8 +25,8 @@ const { analyze, DEFAULTS } = scope.PddAnalysis;
 function order({ order, id = "900000000001", code = "00101", type = "已收货", service = "", quantity = 1, receipt = 20, date = "2026-10-11", warehouse = "" }) {
   return { order, id, code, date, state: type, service, quantity, receipt, buyer: receipt, title: "示例", variant: code, spec: "", warehouse };
 }
-function run({ orders, promos = [], costs = [], listing, options = {}, info = {} }) {
-  return analyze({ orders, promos, costs, listing, start: "2026-08-03", end: "2026-10-31", options, info });
+function run({ orders, promos = [], costs = [], options = {}, info = {} }) {
+  return analyze({ orders, promos, costs, start: "2026-08-03", end: "2026-10-31", options, info });
 }
 const promo = (id, spend) => ({ id, spend, orders: 0, revenue: 0, title: "示例" });
 
@@ -125,25 +125,6 @@ test("同一订单多商品时整店去重并平摊运费，不重复扣费", ()
   assert.equal(result.links[0].freightUnits + result.links[1].freightUnits, 1);
 });
 
-test("出单率包含零单上架链接，排除下架链接，模板内去重订单号", () => {
-  const ids = ["900000000001", "900000000002", "900000000003", "900000000004", "900000000005"];
-  const mapping = new Map(ids.map((id, index) => [id, { id, template: index === 4 ? "OT2" : "OT1", active: index !== 3, title: "测试模板" }]));
-  const inputs = [
-    order({ order: "1", id: ids[0], receipt: 20 }),
-    order({ order: "1", id: ids[1], receipt: 25 }),
-    order({ order: "2", id: ids[1], receipt: 25 }),
-  ];
-  const result = run({ orders: inputs, listing: mapping });
-  const item = result.templates.find(x => x.listingTemplate === "OT1");
-  assert.equal(item.orders, 2);
-  assert.equal(item.linked, 2);
-  assert.equal(item.listedLinks, 3);
-  assert.equal(item.orderRate, 2 / 3);
-  assert.equal(result.links.find(x => x.id === ids[2]).orders, 0);
-  assert.equal(result.templates.find(x => x.listingTemplate === "OT2").orderRate, 0);
-  assert.equal(run({ orders: inputs }).templates[0].orderRate, null);
-});
-
 test("每个模板取保留单最多的商品 ID，独立于盈利和近期代表链接", () => {
   const high = "900000000001", profitable = "900000000002";
   const orders = [
@@ -159,27 +140,6 @@ test("每个模板取保留单最多的商品 ID，独立于盈利和近期代�
   assert.equal(result.leaders[0].recent, 0);
   assert.equal(result.leaders[0].spend, 500);
   assert.ok(result.leaders[0].base < 0);
-});
-
-test("推广表按商品ID去重，计入有唯一模板证据的零单链接", () => {
-  const [one, two, zero, ambiguous, explicit, unknown] = Array.from({length: 6}, (_, i) => "90000000000" + (i + 1));
-  const orders = [order({order:"1", id:one}),order({order:"2", id:one}),order({order:"3", id:two, receipt:25}),
-    order({order:"4",id:"900000000099",receipt:20})];
-  const p = (id, title, promotionName, template) => ({...promo(id, 0), title, promotionName, template});
-  const result = run({orders, promos: [
-    p(one,"同标题","方案A","模板A"),p(two,"同标题","方案B","模板B"),
-    p(zero,"同标题","方案A"),p(zero,"同标题","方案A"),
-    p(ambiguous,"同标题","其他方案"),p(explicit,"改过的标题","新方案","模板A"),p(unknown,"没有锚点",""),
-  ]});
-  const group = result.templates.find(x=>x.memberIds.includes(one));
-  assert.equal(group.listedLinks,3);
-  assert.equal(group.orders,3);
-  assert.equal(group.orderRate,1);
-  assert.equal(group.estimatedLinks,1);
-  assert.equal(group.promoMissing,1);
-  assert.equal(result.stats.promoUnresolved,2);
-  assert.equal(result.stats.promoIds,6);
-  assert.equal(result.rateDetails.find(x=>x.id===ambiguous).counted,false);
 });
 
 test("总花费缺列和单行缺值时回退成交花费，已有零值仍取总花费", async () => {
@@ -209,21 +169,21 @@ test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本",
   assert.equal(completed.result.stats.units, 180);
   assert.equal(completed.result.stats.promoGap, 0);
   assert.equal(completed.result.templates[0].action, "优先复发");
-  assert.equal(completed.result.templates[0].listedLinks, 3);
-  assert.equal(completed.result.templates[0].orderRate, 67 / 3);
-  assert.equal(completed.result.templates[0].rateSource, "推广报表");
-  assert.equal(completed.result.templates[0].estimatedLinks, 1);
+  assert.equal(completed.result.templates[0].orders, 67);
+  assert.equal(completed.result.templates[0].linked, 2);
+  assert.equal(Object.hasOwn(completed.result.templates[0], "orderRate"), false);
   await onMessage({ data: { kind: "export" } });
   const download = messages.at(-1);
   assert.equal(download.kind, "download", download.text);
   const book = XLSX.read(download.binary, { type: "array" });
   assert.equal(book.Sheets["规格成交证据"].D2.t, "s");
   assert.ok(book.Sheets["规格成交证据"].D2.v.startsWith("00"));
-  assert.equal(book.SheetNames.length, 9);
+  assert.equal(book.SheetNames.length, 8);
   const topLink = XLSX.utils.sheet_to_json(book.Sheets["模板最高单量链接"])[0];
   assert.equal(topLink["最高单量商品ID"], "900000000001");
   assert.equal(topLink["保留单"], 40);
   const template = XLSX.utils.sheet_to_json(book.Sheets["模板清单"])[0];
-  assert.equal(template["出单率分母链接数"], 3);
-  assert.equal(template["出单率（单/链接）"], 67 / 3);
+  assert.equal(template["保留单"], 67);
+  assert.equal(Object.hasOwn(template, "出单率（单/链接）"), false);
+  assert.ok(!book.SheetNames.some(name=>name.includes("出单率")));
 });

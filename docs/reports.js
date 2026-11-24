@@ -25,17 +25,9 @@
       title: ["商品名称", "商品标题", "商品"],
       spend: ["总花费", "推广总花费", "总营销花费", "推广费", "推广花费", "实际消耗", "消耗"],
       transactionSpend: ["成交花费", "成交营销花费"],
-      promotionName: ["推广名称", "计划名称", "推广计划名称"],
-      template: ["模板标识", "模板编号", "模板号", "模板ID"],
       orders: ["净成交笔数", "净成交订单数", "净成交订单"],
       revenue: ["净交易额", "净成交金额"],
       date: ["推广日期", "日期", "统计日期", "数据日期"],
-    },
-    listing: {
-      id: ["商品ID", "商品编号", "商品链接ID"],
-      template: ["模板标识", "模板编号", "模板号", "模板ID", "模板名称"],
-      active: ["上架状态", "商品状态", "是否上架"],
-      title: ["商品名称", "商品标题", "商品"],
     },
     cost: {
       code: ["规格编码", "SKU编码", "产品编码", "商品编码", "商家编码-规格维度", "商家编码", "货品编码", "SKU"],
@@ -43,8 +35,8 @@
       warehouse: ["仓库", "所属仓库", "成本仓", "发货仓"],
     },
   };
-  const required = { order: ["order","id","state","date","receipt","quantity","code"], promo: ["id"], cost: ["code","price"], listing: ["id","template"] };
-  const types = { order: "订单对账报表", promo: "商品推广报表", cost: "商品成本表", listing: "同模板上架清单" };
+  const required = { order: ["order","id","state","date","receipt","quantity","code"], promo: ["id"], cost: ["code","price"] };
+  const types = { order: "订单对账报表", promo: "商品推广报表", cost: "商品成本表" };
 
   const heading = value => selectedText(value).replace(/\((元|人民币|件|个|单|笔|%|￥)\)/g, "").replace(/[-_()/:：]/g, "");
   const blank = value => ["", "-", "--", "—", "暂无", "/"].includes(clean(value));
@@ -145,13 +137,13 @@
         if (!identifying.some(key => !blank(get(r, key)))) continue;
         rows.push({ n: r + 1, get: (name, isId) => get(r, name, isId) });
       }
-      results.push({ name, sheetName, rows, dated: columns.date !== undefined, hasStatus: columns.active !== undefined });
+      results.push({ name, sheetName, rows, dated: columns.date !== undefined });
     }
     return results;
   }
   function codeList(kind) {
     const important = { order: "订单号、商品 ID、订单状态、成交时间、商家实收、商品数量和规格编码",
-      promo: "商品 ID 和总花费或成交花费", cost: "规格编码、单位成本", listing: "商品 ID、模板标识" };
+      promo: "商品 ID 和总花费或成交花费", cost: "规格编码、单位成本" };
     return "需要包含" + important[kind] + "。";
   }
   async function tables(files, kind) {
@@ -174,7 +166,7 @@
     }
     return all;
   }
-  function orderRows(tables, allowEmpty) {
+  function orderRows(tables) {
     const rows = [];
     for (const { name, rows: lines } of tables) {
       for (const { n, get } of lines) {
@@ -197,7 +189,7 @@
         });
       }
     }
-    if (!rows.length && !allowEmpty) throw new Error("订单文件没有明细行，请检查下载的报表。");
+    if (!rows.length) throw new Error("订单文件没有明细行，请检查下载的报表。");
     return rows;
   }
   function promoRows(tables) {
@@ -219,7 +211,7 @@
       if (dated && !date) throw new Error(describe(name, n) + "缺有效推广日期。");
       const label = describe(name, n);
       const fallback = blank(get("spend")) && !blank(get("transactionSpend"));
-      rows.push({ id, date, title: clean(get("title")), promotionName: clean(get("promotionName")), template: get("template", true),
+      rows.push({ id, date, title: clean(get("title")),
         usedTransactionSpend: fallback, spend: amount(fallback ? get("transactionSpend") : get("spend"), label + "推广花费"),
         orders: amount(get("orders"), label + "推广净成交笔数", 0), revenue: amount(get("revenue"), label + "推广净交易额", 0) });
     }
@@ -252,31 +244,6 @@
     return rows;
   }
 
-  function listingRows(tables) {
-    if (tables.length > 1) throw new Error("上架清单包含多张商品表，请整理成一张完整清单。");
-    const byId = new Map();
-    for (const { name, rows, hasStatus } of tables) {
-      for (const { n, get } of rows) {
-        const id = get("id", true);
-        if (/^(总计|合计|汇总)$/.test(id)) continue;
-        const template = get("template", true);
-        const status = clean(get("active"));
-        if (!/^\d{6,}$/.test(id) || !template) throw new Error(describe(name, n) + "需要有效的商品 ID 和模板标识。");
-        const active = !hasStatus || /^(已上架|上架|在售|出售中|销售中|1)$/.test(status);
-        if (!active && !/^(已下架|下架|停售|已停售|未上架|草稿|已删除|0)$/.test(status)) {
-          throw new Error(describe(name, n) + "上架状态无法识别，请填写「在售」或「已下架」。仅包含上架商品时可移除该列。");
-        }
-        const previous = byId.get(id);
-        if (previous && (previous.template !== template || previous.active !== active)) {
-          throw new Error(describe(name, n) + "的商品 ID 对应了冲突的模板或上架状态。请核对清单。");
-        }
-        byId.set(id, { id, template, active, title: clean(get("title")) || previous?.title || "" });
-      }
-    }
-    if (tables.length && !byId.size) throw new Error("上架清单没有有效的商品与模板记录。");
-    return byId;
-  }
-
   function spanFromName(name) {
     const found = [...name.matchAll(/(?<!\d)(20\d{2})[-_./年]?(0[1-9]|1[0-2])[-_./月]?(0[1-9]|[12]\d|3[01])(?!\d)/g)]
       .map(m => isoDay(m[1] + "-" + m[2] + "-" + m[3]));
@@ -293,13 +260,11 @@
   }
   async function importFiles(files, params, progress = () => {}) {
     progress("正在读取订单报表…");
-    const orders = orderRows(await tables(files.order, "order"), Boolean(files.listing?.length));
+    const orders = orderRows(await tables(files.order, "order"));
     progress("正在读取商品推广报表…");
     const promo = promoRows(await tables(files.promo, "promo"));
     progress("正在读取成本表…");
     const costs = costRows(await tables(files.cost, "cost"));
-    progress("正在读取同模板上架清单…");
-    const listing = listingRows(await tables(files.listing || [], "listing"));
     const observed = extents(orders);
     const promoDays = promo.dated ? extents(promo.rows) : ["", ""];
     const inferred = promo.namedPeriod ?? (promoDays[0] ? promoDays : observed);
@@ -313,11 +278,11 @@
     const promos = promo.dated ? promo.rows.filter(row => row.date >= start && row.date <= end) : promo.rows;
     const info = {
       orderNames: files.order.map(file => file.name), promoName: files.promo[0].name, costNames: files.cost.map(file => file.name),
-      promoTotal: sliced ? null : promo.total, observed, namedPeriod: promo.namedPeriod, datedPromo: promo.dated, listingName: files.listing?.[0]?.name || "",
+      promoTotal: sliced ? null : promo.total, observed, namedPeriod: promo.namedPeriod, datedPromo: promo.dated,
       promoRows: promos.length, transactionSpendRows: promos.filter(row => row.usedTransactionSpend).length, costRows: costs.length, hasCosts: costs.length > 0,
     };
     progress("正在按商品、规格和成交价计算…");
-    return PddAnalysis.analyze({ orders, promos, costs, listing, start, end, options: params.options, info });
+    return PddAnalysis.analyze({ orders, promos, costs, start, end, options: params.options, info });
   }
 
   globalThis.PddReportFiles = Object.freeze({ importFiles });
