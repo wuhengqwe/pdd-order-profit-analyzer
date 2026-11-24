@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.6.0", "./reports.js?v=1.6.0");
+importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.7.0", "./reports.js?v=1.7.0");
 
 let result = null;
 const snapshotUrl = "https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json";
@@ -70,19 +70,21 @@ function workbookFor(r) {
     XLSX.utils.book_append_sheet(workbook, sheet, name);
   }
   const s = r.stats, o = r.opt;
-  const membersByTemplate = new Map(r.templates.map(row => [row.id, row.memberIds]));
+  const templatesById = new Map(r.templates.map(row => [row.id, row]));
+  const ordersByLink = new Map(r.links.map(row => [row.id, row.orders]));
 
-  function groupIds(template, currentId = null) {
-    const members = membersByTemplate.get(template);
+  function groupMembers(template, currentId = null, withOrders = false) {
+    const members = templatesById.get(template)?.memberIds;
     if (!members?.length) return "";
     const visible = [];
     const limit = currentId === null ? Infinity : 100;
     let chars = 0;
     for (const id of members) {
       if (id === currentId) continue;
-      if (visible.length >= limit || chars + id.length + 3 > 31000) break;
-      visible.push(id);
-      chars += id.length + 3;
+      const label = withOrders ? id + "（" + ordersByLink.get(id) + "单）" : id;
+      if (visible.length >= limit || chars + label.length + 3 > 31000) break;
+      visible.push(label);
+      chars += label.length + 3;
     }
     const remaining = members.length - (currentId === null ? 0 : 1) - visible.length;
     if (remaining) visible.push("另 " + remaining + " 条，按模板号筛选查看");
@@ -97,7 +99,7 @@ function workbookFor(r) {
     ["基础运费下可估算链接利润（元）", p(s.base)], ["对照运费下可估算链接利润（元）", p(s.stress)],
     ["优先复发模板组", s.priority], ["同码同价多链接组", s.multi], ["无保留单推广花费（元）", s.noOrdersAdSpend],
     ["模板最高单量链接", "每组按保留订单数选最高的一条商品链接；订单相同时优先近30天订单数较多的链接。"],
-    ["查找同组商品", "在链接盈亏查找任意商品ID，查看同组其他商品ID。模板清单列出同组商品ID。超长列表可按模板号筛选链接盈亏中的全部记录。"],
+    ["查找同组商品", "在链接盈亏查找任意商品ID，查看同组其他商品ID和出单明细。模板清单列出组内全部已成交链接和各自保留单。组内合计按订单号去重。超长列表可按模板号筛选链接盈亏中的全部记录。"],
     ["推广费取成交花费作为补充的行", r.info.transactionSpendRows],
     ["莆田税点", o.putianTax + "%", "对莆田保留单实收计提"],
     ["义乌税点", o.yiwuTax + "%", "对义乌保留单实收计提"],
@@ -116,22 +118,22 @@ function workbookFor(r) {
     ["订单文件", r.info.orderNames.join(" / ")], ["推广文件", r.info.promoName], ["成本文件", r.info.costNames.join(" / ") || "未导入"],
   ], [], [], [34, 76, 75]);
   add("模板清单", ["模板号", "发布建议", "商品标题", "代表商品ID", "同组链接", "保留单", "近30天单", "对照盈利链接",
-    "基础利润", "对照利润", "基础利润率", "商家实收", "推广花费", "规格与常见实收单价", "组内最低主价占比", "同组商品ID"],
+    "基础利润", "对照利润", "基础利润率", "商家实收", "推广花费", "规格与常见实收单价", "组内最低主价占比", "同组商品ID", "同组链接出单明细"],
   r.templates.map(x => [x.id, x.action, x.title, x.rep, x.linked, x.orders, x.recent, x.solid, x.base, x.stress,
-    x.margin, x.revenue, x.spend, x.signatureText, x.share, groupIds(x.id)]), [8,9,11,12], [10,14], [12,18,48,20,12,12,14,18,15,15,14,16,16,74,20,76]);
+    x.margin, x.revenue, x.spend, x.signatureText, x.share, groupMembers(x.id), groupMembers(x.id, null, true)]), [8,9,11,12], [10,14], [12,18,48,20,12,12,14,18,15,15,14,16,16,74,20,76,92]);
   add("模板最高单量链接", ["模板号", "最高单量商品ID", "商品标题", "保留单", "近30天单", "商品件数", "退款单",
     "商家实收", "推广花费", "估算税费", "基础利润", "对照利润", "基础利润率", "主销规格编码", "主销实收单价",
-    "匹配成本仓", "利润状态", "同组其他商品ID"],
+    "匹配成本仓", "利润状态", "同组其他商品ID", "同组保留单", "同组其他链接出单明细"],
   r.leaders.map(x => [x.template, x.id, x.title, x.orders, x.recent, x.units, x.refunded, x.revenue, x.spend,
     x.tax, x.base, x.stress, x.margin, x.primaryCode, x.price, x.costWarehouse,
-    x.status, groupIds(x.template, x.id)]),
-  [7,8,9,10,11,14], [12], [12,20,48,12,14,12,12,16,16,15,15,15,14,20,15,16,18,76]);
+    x.status, groupMembers(x.template, x.id), templatesById.get(x.template)?.orders, groupMembers(x.template, x.id, true)]),
+  [7,8,9,10,11,14], [12], [12,20,48,12,14,12,12,16,16,15,15,15,14,20,15,16,18,76,14,92]);
   add("链接盈亏", ["排名", "商品ID", "商品标题", "模板号", "保留单", "近30天单", "商品件数", "已付单", "退款单", "售后处理中",
     "商家实收", "推广花费", "匹配商品成本", "基础利润", "对照利润", "基础利润率", "主销规格编码", "主销实收单价",
-    "缺成本单", "状态", "推广净成交笔数", "推广净交易额", "运费计费单数", "无规格编码行", "发布建议", "匹配成本仓", "莆田计税实收", "义乌计税实收", "估算税费", "计税仓待核对单", "同组其他商品ID"],
+    "缺成本单", "状态", "推广净成交笔数", "推广净交易额", "运费计费单数", "无规格编码行", "发布建议", "匹配成本仓", "莆田计税实收", "义乌计税实收", "估算税费", "计税仓待核对单", "同组其他商品ID", "同组保留单", "同组其他链接出单明细"],
   r.links.map(x => [x.rank, x.id, x.title, x.template, x.orders, x.recent, x.units, x.paid, x.refunded, x.pending, x.revenue,
     x.spend, x.partialCost, x.base, x.stress, x.margin, x.primaryCode, x.price, x.missing, x.status, x.adOrders, x.adRevenue,
-    x.freightUnits, x.noCode, x.action, x.costWarehouse, x.putianReceipt, x.yiwuReceipt, x.tax, x.taxMissing, groupIds(x.template, x.id)]), [10,11,12,13,14,17,21,26,27,28], [15], [9,20,48,12,...Array(26).fill(16),76]);
+    x.freightUnits, x.noCode, x.action, x.costWarehouse, x.putianReceipt, x.yiwuReceipt, x.tax, x.taxMissing, groupMembers(x.template, x.id), templatesById.get(x.template)?.orders, groupMembers(x.template, x.id, true)]), [10,11,12,13,14,17,21,26,27,28], [15], [9,20,48,12,...Array(26).fill(16),76,14,92]);
   add("规格成交证据", ["模板号", "商品ID", "商品标题", "规格编码", "规格描述", "保留订单", "件数", "常见实收单价",
     "常见买家实付单价", "最低实收单价", "最高实收单价", "主价行占比", "缺成本单", "匹配成本仓"],
   r.specs.map(x => [x.template, x.id, x.title, x.code, x.description, x.orders, x.units, x.price, x.buyer, x.lower, x.upper, x.share, x.missing, x.costWarehouse]),

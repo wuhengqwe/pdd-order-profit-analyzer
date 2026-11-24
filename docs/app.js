@@ -90,7 +90,7 @@
   function start(message) {
     invalidate();
     try {
-      const worker = new Worker("./worker.js?v=1.6.0");
+      const worker = new Worker("./worker.js?v=1.7.0");
       state.worker = worker;
       worker.addEventListener("message", ({ data }) => {
         if (worker !== state.worker) return;
@@ -249,7 +249,7 @@
     sortableHeader();
     const query = normalize($("query").value);
     const filter = $("filter").value;
-    const exactGroup = state.view === "links" && state.result.templates.some(item => normalize(item.id) === query);
+    const exactGroup = state.view === "links" ? state.result.templates.find(item => normalize(item.id) === query) : undefined;
     const matching = state.result[state.view].filter(item => {
       if (filter && item.action !== filter) return false;
       if (!query) return true;
@@ -297,7 +297,9 @@
       tr.append(td);
       tbody.append(tr);
     }
-    $("result-count").textContent = fmtCount.format(matching.length) + " 条 · 第 " + (state.page + 1) + " / " + (maxPage + 1) + " 页";
+    const groupTotal = exactGroup ? " · 同组共 " + fmtCount.format(exactGroup.orders) + " 单" : "";
+    $("result-count").textContent = fmtCount.format(matching.length) + " 条" + groupTotal + " · 第 " +
+      (state.page + 1) + " / " + (maxPage + 1) + " 页";
     $("previous").disabled = state.page === 0;
     $("next").disabled = state.page >= maxPage;
   }
