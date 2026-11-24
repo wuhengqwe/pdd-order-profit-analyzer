@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.7.1", "./reports.js?v=1.7.1");
+importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.7.2", "./reports.js?v=1.7.2");
 
 let result = null;
 const snapshotUrl = "https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json";
@@ -78,7 +78,7 @@ function workbookFor(r) {
     if (!members?.length) return "";
     const visible = [];
     const limit = currentId === null ? Infinity : 100;
-    const separator = ", ";
+    const separator = ",";
     let chars = 0;
     for (const id of members) {
       if (id === currentId) continue;
