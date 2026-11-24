@@ -6,7 +6,7 @@
   <meta name="description" content="在浏览器中合并拼多多订单与商品推广报表，核算链接盈亏并筛选同码同价模板。">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; worker-src 'self'; connect-src https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json; base-uri 'none'; form-action 'none'">
   <title>拼多多出单分析</title>
-  <link rel="stylesheet" href="./style.css?v=1.7.4">
+  <link rel="stylesheet" href="./style.css?v=1.7.5">
   <script src="./app.js?v=1.7.4" defer></script>
 </head>
 <body>
@@ -169,6 +169,18 @@
         <p>按成交规格编码与各规格最常见的商家实收单价归并。同组复用前请核对完整在售 SKU。</p>
         <p>「模板最高单量链接」每组只展示保留订单最多的链接，订单数相同时优先近 30 天订单数较多的链接。</p>
         <p>查同组链接时，在「链接盈亏」输入商品 ID，再点所在行的模板号。导出的 Excel 按近 30 天保留单量分四档，可筛选各档的同组链接条数。</p>
+        <h3>发布建议怎么判断</h3>
+        <p>按同模板整组判断，依次检查下列规则，命中第一条后就定为该类。全组单量按订单号去重，近 30 天以分析结束日为最后一天。</p>
+        <ol class="decision-rules">
+          <li><strong>待补成本或规格。</strong> 组内有链接因缺成本、推广花费或计税仓而无法估算利润，或订单规格编码不完整。</li>
+          <li><strong>暂缓复发。</strong> 全组基础利润 ≤ 0。</li>
+          <li><strong>运费敏感。</strong> 全组基础利润 &gt; 0，但对照利润 ≤ 0。</li>
+          <li><strong>优先复发。</strong> 全组对照利润 &gt; 0，且组内至少有 2 条链接各有 ≥ 5 个保留单、各自对照利润 &gt; 0。全组累计 ≥ 20 个保留单，近 30 天 ≥ 10 单且占累计单量 ≥ 12%。每条链接的主价占比均 ≥ 50%。</li>
+          <li><strong>小批复测。</strong> 未达到优先复发条件，但全组对照利润 &gt; 0、代表链接累计 ≥ 10 个保留单、全组近 30 天 ≥ 3 单，且每条链接的主价占比均 ≥ 50%。</li>
+          <li><strong>样本待积累。</strong> 全组对照利润 &gt; 0，但单量或主价占比还未达到上述复发条件。</li>
+        </ol>
+        <p><strong>主价占比</strong>按每条链接的订单明细行计算。先找出各规格最常出现的商家实收单价，再用符合各自常见单价的明细行数除以该链接的保留明细总行数。</p>
+        <p><strong>代表链接</strong>优先从对照利润为正的链接中选近 30 天保留单最多的一条。如果没有这类链接，就在全组按近 30 天保留单排序。近 30 天单量相同时，再比累计保留单和对照利润。</p>
       </div>
     </details>
   </main>

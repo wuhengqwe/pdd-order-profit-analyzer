@@ -89,6 +89,8 @@ fieldset > .hint { margin-block-start: .45rem; }
 .how summary { font-weight: 700; }
 .how h3 { margin-top: .9rem; }
 .how p { margin-top: .25rem; color: var(--muted); max-width: 55rem; }
+.how .decision-rules { max-width: 55rem; margin: .4rem 0 .65rem; padding-inline-start: 1.4rem; color: var(--muted); }
+.how .decision-rules li + li { margin-top: .3rem; }
 .footer { display: flex; justify-content: space-between; gap: .7rem; padding-block: 1.7rem; color: var(--muted); font-size: .875rem; }
 .notice { padding: .75rem 1rem; border: 1px solid #edca9e; border-radius: .65rem; background: #fff8e7; color: #6b4618; margin-top: .8rem; }
 .notice.problem { color: var(--loss); border-color: #ecc2ca; background: #fff0f3; }
