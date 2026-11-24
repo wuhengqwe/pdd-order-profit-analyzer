@@ -161,6 +161,46 @@ test("每个模板取保留单最多的商品 ID，独立于盈利和近期代�
   assert.ok(result.leaders[0].base < 0);
 });
 
+test("推广表按商品ID去重，计入有唯一模板证据的零单链接", () => {
+  const [one, two, zero, ambiguous, explicit, unknown] = Array.from({length: 6}, (_, i) => "90000000000" + (i + 1));
+  const orders = [order({order:"1", id:one}),order({order:"2", id:one}),order({order:"3", id:two, receipt:25}),
+    order({order:"4",id:"900000000099",receipt:20})];
+  const p = (id, title, promotionName, template) => ({...promo(id, 0), title, promotionName, template});
+  const result = run({orders, promos: [
+    p(one,"同标题","方案A","模板A"),p(two,"同标题","方案B","模板B"),
+    p(zero,"同标题","方案A"),p(zero,"同标题","方案A"),
+    p(ambiguous,"同标题","其他方案"),p(explicit,"改过的标题","新方案","模板A"),p(unknown,"没有锚点",""),
+  ]});
+  const group = result.templates.find(x=>x.memberIds.includes(one));
+  assert.equal(group.listedLinks,3);
+  assert.equal(group.orders,3);
+  assert.equal(group.orderRate,1);
+  assert.equal(group.estimatedLinks,1);
+  assert.equal(group.promoMissing,1);
+  assert.equal(result.stats.promoUnresolved,2);
+  assert.equal(result.stats.promoIds,6);
+  assert.equal(result.rateDetails.find(x=>x.id===ambiguous).counted,false);
+});
+
+test("总花费缺列和单行缺值时回退成交花费，已有零值仍取总花费", async () => {
+  const csv = (lines, name) => new File([lines.join("\r\n")],name);
+  const orderFile=csv([
+    "订单号,商品ID,订单状态,订单成交时间,商家实收,商品数量,规格编码",
+    "f1,900000000001,已收货,2026-10-01,50,1,0010",
+    "f2,900000000002,已收货,2026-10-01,50,1,0010",
+  ],"order.csv");
+  const make = promoCsv => scope.PddReportFiles.importFiles({order:[orderFile],promo:[promoCsv],cost:[]},
+    {start:"2026-10-01",end:"2026-10-01",options:{}});
+  let result=await make(csv(["商品ID,总花费(元),成交花费(元)","900000000001,0,9","900000000002,--,7","总计,7,16"],"promo.csv"));
+  assert.equal(result.info.transactionSpendRows,1);
+  assert.equal(result.links.find(x=>x.id==="900000000001").spend,0);
+  assert.equal(result.stats.spend,7);
+  result=await make(csv(["商品ID,成交花费(元)","900000000001,6","900000000002,7","总计,13"],"promo.csv"));
+  assert.equal(result.info.transactionSpendRows,2);
+  assert.equal(result.stats.spend,13);
+  assert.equal(result.stats.promoGap,0);
+});
+
 test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本", async () => {
   await onMessage({ data: { kind: "demo" } });
   const completed = messages.find(x => x.kind === "result");
@@ -171,17 +211,19 @@ test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本",
   assert.equal(completed.result.templates[0].action, "优先复发");
   assert.equal(completed.result.templates[0].listedLinks, 3);
   assert.equal(completed.result.templates[0].orderRate, 67 / 3);
+  assert.equal(completed.result.templates[0].rateSource, "推广报表");
+  assert.equal(completed.result.templates[0].estimatedLinks, 1);
   await onMessage({ data: { kind: "export" } });
   const download = messages.at(-1);
   assert.equal(download.kind, "download", download.text);
   const book = XLSX.read(download.binary, { type: "array" });
   assert.equal(book.Sheets["规格成交证据"].D2.t, "s");
   assert.ok(book.Sheets["规格成交证据"].D2.v.startsWith("00"));
-  assert.equal(book.SheetNames.length, 8);
+  assert.equal(book.SheetNames.length, 9);
   const topLink = XLSX.utils.sheet_to_json(book.Sheets["模板最高单量链接"])[0];
   assert.equal(topLink["最高单量商品ID"], "900000000001");
   assert.equal(topLink["保留单"], 40);
   const template = XLSX.utils.sheet_to_json(book.Sheets["模板清单"])[0];
-  assert.equal(template["同模板上架链接数"], 3);
+  assert.equal(template["出单率分母链接数"], 3);
   assert.equal(template["出单率（单/链接）"], 67 / 3);
 });

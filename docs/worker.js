@@ -1,6 +1,6 @@
 "use strict";
 
-importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.3.0", "./reports.js?v=1.3.0");
+importScripts("./vendor/xlsx.full.min.js", "./vendor/fflate.js", "./analysis.js?v=1.4.0", "./reports.js?v=1.4.0");
 
 let result = null;
 const snapshotUrl = "https://wuhengqwe.github.io/profit-analysis-tool/cost_data.json";
@@ -39,6 +39,7 @@ function makeDemo() {
     ["900000000005", "演示款 C｜缺成本", 52, 6, 131.4],
     ["900000000006", "演示款 E｜有推广无单", 38.8, 0, 0],
     ["900000000007", "演示款 D｜低运费才盈利", 57, 10, 150],
+    ["900000000008", "演示款 A｜常规版", 0, 0, 0],
     ["总计", "-", 1083.5, 120, 2270.6],
   ];
   const costs = [
@@ -53,12 +54,6 @@ function makeDemo() {
     order: [new File([zip], "演示_订单对账报表.zip")],
     promo: [excel(promos, "演示_推广商品_20260803至20261031.xlsx")],
     cost: [excel(costs, "演示_商品成本表.xlsx")],
-    listing: [excel([
-      ["商品ID", "模板标识", "上架状态", "商品名称"],
-      ["900000000001", "演示模板 A", "在售", "演示款 A｜常规版"],
-      ["900000000002", "演示模板 A", "在售", "演示款 A｜同价链接"],
-      ["900000000008", "演示模板 A", "在售", "演示款 A｜零单链接"],
-    ], "演示_同模板上架清单.xlsx")],
   };
 }
 function workbookFor(r) {
@@ -85,7 +80,9 @@ function workbookFor(r) {
     ["基础运费下可估算链接利润（元）", p(s.base)], ["对照运费下可估算链接利润（元）", p(s.stress)],
     ["优先复发模板组", s.priority], ["同码同价多链接组", s.multi], ["无保留单推广花费（元）", s.noOrdersAdSpend],
     ["清单中上架链接", s.listed], ["可计算出单率的模板", s.rateTemplates],
-    ["出单率（单/链接）", "模板保留订单号去重后，除以该模板上架链接数，包含零单上架链接。"],
+    ["出单率（单/链接）", "模板保留订单去重后，除以推广报表中可归到同模板的去重商品 ID 数，含零单链接。可选的上架清单优先。"],
+    ["推广报表商品 ID", s.promoIds], ["未归组推广 ID", s.promoUnresolved], ["名称估算归组的 ID", s.promoInferred],
+    ["推广表未覆盖的出单 ID", s.promoMissingSold], ["推广费取成交花费作为补充的行", r.info.transactionSpendRows],
     ["模板最高单量链接", "每组按保留订单数选最高的一条商品链接；订单相同时优先近30天订单数较多的链接。"],
     ["同模板上架清单", r.info.listingName || "未导入"],
     ["莆田税点", o.putianTax + "%", "对莆田保留单实收计提"],
@@ -105,9 +102,9 @@ function workbookFor(r) {
     ["订单文件", r.info.orderNames.join(" / ")], ["推广文件", r.info.promoName], ["成本文件", r.info.costNames.join(" / ") || "未导入"],
   ], [], [], [34, 76, 75]);
   add("模板清单", ["模板号", "发布建议", "商品标题", "代表商品ID", "同组链接", "保留单", "近30天单", "对照盈利链接",
-    "基础利润", "对照利润", "基础利润率", "商家实收", "推广花费", "规格与常见实收单价", "组内最低主价占比", "清单模板标识", "同模板上架链接数", "出单率（单/链接）"],
+    "基础利润", "对照利润", "基础利润率", "商家实收", "推广花费", "规格与常见实收单价", "组内最低主价占比", "清单模板标识", "出单率分母链接数", "出单率（单/链接）", "出单率来源", "名称推断链接数", "未见推广表的出单链接数"],
   r.templates.map(x => [x.id, x.action, x.title, x.rep, x.linked, x.orders, x.recent, x.solid, x.base, x.stress,
-    x.margin, x.revenue, x.spend, x.signatureText, x.share, x.listingTemplate, x.listedLinks, x.orderRate]), [8,9,11,12,17], [10,14], [12,18,48,20,12,12,14,18,15,15,14,16,16,74,20,22,18,20]);
+    x.margin, x.revenue, x.spend, x.signatureText, x.share, x.listingTemplate, x.listedLinks, x.orderRate, x.rateSource, x.estimatedLinks, x.promoMissing]), [8,9,11,12,17], [10,14], [12,18,48,20,12,12,14,18,15,15,14,16,16,74,20,22,18,20]);
   add("模板最高单量链接", ["模板号", "最高单量商品ID", "商品标题", "保留单", "近30天单", "商品件数", "退款单",
     "商家实收", "推广花费", "估算税费", "基础利润", "对照利润", "基础利润率", "主销规格编码", "主销实收单价",
     "匹配成本仓", "上架状态", "利润状态"],
@@ -128,6 +125,9 @@ function workbookFor(r) {
   add("重叠规格待核对", ["规格编码", "常见实收单价", "同价链接数", "涉及模板组", "规格保留单", "商品ID示例", "模板号示例"],
     r.overlaps.map(x => [x.code, x.price, x.links, x.groups, x.orders, x.ids.slice(0, 25).join(" / "), x.templates.slice(0, 25).join(" / ")]),
     [1], [], [22,18,16,16,16,72,72]);
+  add("出单率链接核对", ["商品 ID", "商品名称", "推广名称", "模板号", "归组依据", "计入分母", "数据来源"],
+    r.rateDetails.map(x => [x.id, x.title, x.promotionName, x.template, x.evidence, x.counted ? "是" : "否", x.source]),
+    [], [], [20,54,51,14,27,14,18]);
   add("缺成本编码", ["规格编码", "涉及保留订单"], r.missingCosts.map(x => [x.code, x.orders]), [], [], [27,20]);
   add("每日订单", ["成交日", "保留订单"], r.days, [], [], [18,18]);
   return XLSX.write(workbook, { bookType: "xlsx", type: "array", compression: true });

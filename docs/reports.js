@@ -23,7 +23,10 @@
     promo: {
       id: ["商品ID", "商品编号", "商品链接ID"],
       title: ["商品名称", "商品标题", "商品"],
-      spend: ["总花费", "推广总花费", "推广费", "推广花费", "实际消耗", "消耗"],
+      spend: ["总花费", "推广总花费", "总营销花费", "推广费", "推广花费", "实际消耗", "消耗"],
+      transactionSpend: ["成交花费", "成交营销花费"],
+      promotionName: ["推广名称", "计划名称", "推广计划名称"],
+      template: ["模板标识", "模板编号", "模板号", "模板ID"],
       orders: ["净成交笔数", "净成交订单数", "净成交订单"],
       revenue: ["净交易额", "净成交金额"],
       date: ["推广日期", "日期", "统计日期", "数据日期"],
@@ -40,7 +43,7 @@
       warehouse: ["仓库", "所属仓库", "成本仓", "发货仓"],
     },
   };
-  const required = { order: ["order","id","state","date","receipt","quantity","code"], promo: ["id","spend"], cost: ["code","price"], listing: ["id","template"] };
+  const required = { order: ["order","id","state","date","receipt","quantity","code"], promo: ["id"], cost: ["code","price"], listing: ["id","template"] };
   const types = { order: "订单对账报表", promo: "商品推广报表", cost: "商品成本表", listing: "同模板上架清单" };
 
   const heading = value => selectedText(value).replace(/\((元|人民币|件|个|单|笔|%|￥)\)/g, "").replace(/[-_()/:：]/g, "");
@@ -78,7 +81,10 @@
       const columns = Object.fromEntries(Object.entries(fields[kind]).map(([key, aliases]) => [
         key, aliases.map(heading).map(a => header.get(a)).find(col => col !== undefined),
       ]));
-      if (required[kind].every(key => columns[key] !== undefined)) return { row, last: range.e.r, columns };
+      const hasFields = required[kind].every(key => columns[key] !== undefined);
+      if (hasFields && (kind !== "promo" || columns.spend !== undefined || columns.transactionSpend !== undefined)) {
+        return { row, last: range.e.r, columns };
+      }
     }
     return null;
   }
@@ -135,7 +141,8 @@
       };
       const rows = [];
       for (let r = row + 1; r <= last; r++) {
-        if (!required[kind].some(key => !blank(get(r, key)))) continue;
+        const identifying = kind === "promo" ? ["id", "spend", "transactionSpend"] : required[kind];
+        if (!identifying.some(key => !blank(get(r, key)))) continue;
         rows.push({ n: r + 1, get: (name, isId) => get(r, name, isId) });
       }
       results.push({ name, sheetName, rows, dated: columns.date !== undefined, hasStatus: columns.active !== undefined });
@@ -144,7 +151,7 @@
   }
   function codeList(kind) {
     const important = { order: "订单号、商品 ID、订单状态、成交时间、商家实收、商品数量和规格编码",
-      promo: "商品 ID、总花费（或推广总花费）", cost: "规格编码、单位成本", listing: "商品 ID、模板标识" };
+      promo: "商品 ID 和总花费或成交花费", cost: "规格编码、单位成本", listing: "商品 ID、模板标识" };
     return "需要包含" + important[kind] + "。";
   }
   async function tables(files, kind) {
@@ -201,17 +208,19 @@
     for (const { n, get } of lines) {
       const id = get("id", true);
       if (/^(总计|合计|汇总)$/.test(id)) {
-        const one = amount(get("spend"), describe(name, n) + "推广总花费");
+        const one = amount(blank(get("spend")) ? get("transactionSpend") : get("spend"), describe(name, n) + "推广花费");
         if (total !== null && one !== total) throw new Error("推广报表含多个不同的总计金额，请导入单一商品汇总报表。");
         total = one;
         continue;
       }
-      if (/^(注[:：]?|备注[:：]?|仅下载)/.test(id) || (!id && blank(get("spend")))) continue;
+      if (/^(注[:：]?|备注[:：]?|仅下载)/.test(id) || (!id && blank(get("spend")) && blank(get("transactionSpend")))) continue;
       if (!/^\d{6,}$/.test(id)) throw new Error(describe(name, n) + "商品 ID 无法识别，需导出到商品维度。");
       const date = dateCell(get("date"));
       if (dated && !date) throw new Error(describe(name, n) + "缺有效推广日期。");
       const label = describe(name, n);
-      rows.push({ id, date, title: clean(get("title")), spend: amount(get("spend"), label + "推广总花费"),
+      const fallback = blank(get("spend")) && !blank(get("transactionSpend"));
+      rows.push({ id, date, title: clean(get("title")), promotionName: clean(get("promotionName")), template: get("template", true),
+        usedTransactionSpend: fallback, spend: amount(fallback ? get("transactionSpend") : get("spend"), label + "推广花费"),
         orders: amount(get("orders"), label + "推广净成交笔数", 0), revenue: amount(get("revenue"), label + "推广净交易额", 0) });
     }
     return { rows, total, namedPeriod: spanFromName(name) ?? spanFromName(sheetName), dated };
@@ -305,7 +314,7 @@
     const info = {
       orderNames: files.order.map(file => file.name), promoName: files.promo[0].name, costNames: files.cost.map(file => file.name),
       promoTotal: sliced ? null : promo.total, observed, namedPeriod: promo.namedPeriod, datedPromo: promo.dated, listingName: files.listing?.[0]?.name || "",
-      promoRows: promos.length, costRows: costs.length, hasCosts: costs.length > 0,
+      promoRows: promos.length, transactionSpendRows: promos.filter(row => row.usedTransactionSpend).length, costRows: costs.length, hasCosts: costs.length > 0,
     };
     progress("正在按商品、规格和成交价计算…");
     return PddAnalysis.analyze({ orders, promos, costs, listing, start, end, options: params.options, info });
