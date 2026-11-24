@@ -90,7 +90,7 @@
   function start(message) {
     invalidate();
     try {
-      const worker = new Worker("./worker.js?v=1.5.0");
+      const worker = new Worker("./worker.js?v=1.6.0");
       state.worker = worker;
       worker.addEventListener("message", ({ data }) => {
         if (worker !== state.worker) return;
@@ -219,11 +219,11 @@
     for (const [idx,[field,,type]] of headers[state.view].entries()) {
       const v = item[field], cell = el(idx === 0 ? "th" : "td", null, type ? "num" : "");
       if (idx === 0) cell.scope = "row";
-      if (state.view === "templates" && field === "id") {
+      if ((state.view === "templates" && field === "id") || (field === "template" && v)) {
         const button = el("button", v, "row-action");
         button.type = "button";
         button.dataset.members = v;
-        button.setAttribute("aria-label", "查看模板 " + v + " 的成员链接");
+        button.setAttribute("aria-label", "查看模板 " + v + " 的同组链接");
         cell.append(button);
       } else if (field === "title") {
         cell.append(el("span", v), el("small", "商品 ID " + (item.rep ?? item.id)));
@@ -249,9 +249,11 @@
     sortableHeader();
     const query = normalize($("query").value);
     const filter = $("filter").value;
+    const exactGroup = state.view === "links" && state.result.templates.some(item => normalize(item.id) === query);
     const matching = state.result[state.view].filter(item => {
       if (filter && item.action !== filter) return false;
       if (!query) return true;
+      if (exactGroup) return normalize(item.template) === query;
       return [item.id, item.rep, item.title, item.code, item.primaryCode, item.signatureText, item.template,
         item.ids?.join(" "), item.templates?.join(" ")].some(field => normalize(field).includes(query));
     });

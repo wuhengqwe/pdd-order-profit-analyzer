@@ -184,6 +184,12 @@ test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本",
   assert.equal(topLink["保留单"], 40);
   const template = XLSX.utils.sheet_to_json(book.Sheets["模板清单"])[0];
   assert.equal(template["保留单"], 67);
+  assert.deepEqual(template["同组商品ID"].split(" / "), ["900000000001", "900000000002"]);
+  assert.equal(topLink["同组其他商品ID"], "900000000002");
+  const links = XLSX.utils.sheet_to_json(book.Sheets["链接盈亏"]);
+  assert.equal(links.find(x=>x["商品ID"]==="900000000001")["同组其他商品ID"], "900000000002");
+  assert.equal(links.find(x=>x["商品ID"]==="900000000002")["同组其他商品ID"], "900000000001");
+  assert.equal(links.find(x=>x["商品ID"]==="900000000004")["同组其他商品ID"], undefined);
   assert.equal(Object.hasOwn(template, "出单率（单/链接）"), false);
   assert.ok(!book.SheetNames.some(name=>name.includes("出单率")));
 });
