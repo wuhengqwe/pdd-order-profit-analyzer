@@ -199,3 +199,27 @@ test("演示通过真实 ZIP、XLSX 解析与导出，且导出编码为文本",
   assert.equal(Object.hasOwn(template, "出单率（单/链接）"), false);
   assert.ok(!book.SheetNames.some(name=>name.includes("出单率")));
 });
+
+test("链接盈亏按近30天保留单统计同组其他链接条数，四档可数字筛选", () => {
+  const ordersByLink = [0, 1, 9, 10, 49, 50, 51];
+  const orders = ordersByLink.flatMap((count, i) =>
+    Array.from({ length: Math.max(1, count) }, (_, index) =>
+      order({ order: i + "-" + index, id: String(910000000001 + i), date: count ? "2026-10-11" : "2026-09-11" })));
+  orders.push(order({ order: "single", id: "910000000020", code: "B" }));
+  const report = run({ orders, promos: [promo("910000000021", 5)], info: { orderNames: [], promoName: "", costNames: [] } });
+  const book = XLSX.read(scope.workbookFor(report), { type: "array" });
+  const sheet = book.Sheets["链接盈亏"];
+  const rows = XLSX.utils.sheet_to_json(sheet);
+  const headers = ["其他近30天≥50单（条）", "其他近30天10–49单（条）", "其他近30天1–9单（条）", "其他近30天0单（条）"];
+  const bandsFor = id => {
+    const row = rows.find(row => row["商品ID"] === id);
+    return headers.map(header => row[header]);
+  };
+  assert.deepEqual(bandsFor("910000000001"), [2, 2, 2, 0]);
+  assert.deepEqual(bandsFor("910000000002"), [2, 2, 1, 1]);
+  assert.deepEqual(bandsFor("910000000004"), [2, 1, 2, 1]);
+  assert.deepEqual(bandsFor("910000000006"), [1, 2, 2, 1]);
+  assert.deepEqual(bandsFor("910000000020"), [0, 0, 0, 0]);
+  assert.deepEqual(bandsFor("910000000021"), [undefined, undefined, undefined, undefined]);
+  assert.equal(sheet["!autofilter"].ref, sheet["!ref"]);
+});
